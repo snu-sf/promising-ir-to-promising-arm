@@ -136,6 +136,7 @@ Inductive instrT :=
 | instr_assign (lhs:Id.t) (rhs:exprT)
 | instr_load (ex:bool) (ord:OrdR.t) (res:Id.t) (eloc:exprT)
 | instr_store (ex:bool) (ord:OrdW.t) (res:Id.t) (eloc:exprT) (eval:exprT)
+| instr_fadd (ordr:OrdR.t) (ordw:OrdW.t) (res:Id.t) (eloc:exprT) (eadd:exprT)
 | instr_barrier (b:Barrier.t)
 .
 #[export]
@@ -230,6 +231,7 @@ Module Event.
   | control (ctrl:A)
   | read (ex:bool) (ord:OrdR.t) (vloc:ValA.t (A:=A)) (res:ValA.t (A:=A))
   | write (ex:bool) (ord:OrdW.t) (vloc:ValA.t (A:=A)) (vval:ValA.t (A:=A)) (res:ValA.t (A:=A))
+  | fadd (ordr:OrdR.t) (ordw:OrdW.t) (vloc vold vnew: ValA.t (A:=A))
   | barrier (b:Barrier.t)
   .
 End Event.
@@ -276,6 +278,14 @@ Section State.
       (RMAP: rmap' = RMap.add res vres rmap):
       step (Event.write ex o vloc vval vres)
            (mk ((stmt_instr (instr_store ex o res eloc eval))::stmts) rmap)
+           (mk stmts rmap')
+  | step_fadd
+      or ow res eloc eadd stmts rmap vloc vold vnew rmap'
+      (LOC: vloc = sem_expr rmap eloc)
+      (NEW: vnew = sem_op2 op_add vold (sem_expr rmap eadd))
+      (RMAP: rmap' = RMap.add res vold rmap):
+      step (Event.fadd or ow vloc vold vnew)
+           (mk ((stmt_instr (instr_fadd or ow res eloc eadd))::stmts) rmap)
            (mk stmts rmap')
   | step_barrier
       b stmts rmap:

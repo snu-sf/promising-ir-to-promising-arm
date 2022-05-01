@@ -587,6 +587,12 @@ Section Eqts.
       (VVAL: eqts_val vval1 vval2)
       (RES: eqts_val res1 res2):
       eqts_event (Event.write ex ord vloc1 vval1 res1) (Event.write ex ord vloc2 vval2 res2)
+  | eqts_event_fadd
+      ordr ordw vloc1 vloc2 vold1 vold2 vnew1 vnew2
+      (VLOC: eqts_val vloc1 vloc2)
+      (VOLD: eqts_val vold1 vold2)
+      (VNEW: eqts_val vnew1 vnew2):
+      eqts_event (Event.fadd ordr ordw vloc1 vold1 vnew1) (Event.fadd ordr ordw vloc2 vold2 vnew2)
   | eqts_event_barrier
       b:
       eqts_event (Event.barrier b) (Event.barrier b)
@@ -988,6 +994,11 @@ Section Local.
       ex ord vloc vval res
       (EVENT: event = Event.write ex ord vloc vval res)
       (STEP: write_failure ex res lc1 lc2)
+  | step_fadd
+      ordr ordw vloc vold vnew ts_old ts_new lc1' view_pre
+      (EVENT: event = Event.fadd ordr ordw vloc vold vnew)
+      (STEP_READ: read false ordr vloc vold ts_old lc1 mem lc1')
+      (STEP_FULFILL: fulfill false ordw vloc vnew vold ts_new tid view_pre lc1' mem lc2)
   | step_isb
       (EVENT: event = Event.barrier Barrier.isb)
       (STEP: isb lc1 lc2)
@@ -1236,6 +1247,9 @@ Section Local.
     - eapply read_incr. eauto.
     - eapply fulfill_incr. eauto.
     - eapply write_failure_incr. eauto.
+    - hexploit read_incr; eauto. i.
+      hexploit fulfill_incr; eauto. i.
+      etrans; eauto.
     - eapply isb_incr. eauto.
     - eapply dmb_incr. eauto.
     - eapply control_incr. eauto.
