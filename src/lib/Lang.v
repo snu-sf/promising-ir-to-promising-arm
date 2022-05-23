@@ -60,6 +60,14 @@ Hint Constructors exprT: core.
 Coercion expr_const: Val.t >-> exprT.
 Coercion expr_reg: Id.t >-> exprT.
 
+Fixpoint regs_of_expr (e: exprT): IdSet.t :=
+  match e with
+  | expr_const _ => IdSet.empty
+  | expr_reg r => IdSet.singleton r
+  | expr_op1 _ e => regs_of_expr e
+  | expr_op2 _ e1 e2 => IdSet.union (regs_of_expr e1) (regs_of_expr e2)
+  end.
+
 Module OrdR.
   Inductive t :=
   | pln
@@ -142,6 +150,15 @@ Inductive instrT :=
 #[export]
 Hint Constructors instrT: core.
 Coercion instr_barrier: Barrier.t >-> instrT.
+
+Definition regs_of_instr (i: instrT): IdSet.t :=
+  match i with
+  | instr_assign lhs rhs => IdSet.add lhs (regs_of_expr rhs)
+  | instr_load _ _ res eloc => IdSet.add res (regs_of_expr eloc)
+  | instr_store _ _ res eloc eval => IdSet.add res (IdSet.union (regs_of_expr eloc) (regs_of_expr eval))
+  | instr_fadd _ _ res eloc eadd => IdSet.add res (IdSet.union (regs_of_expr eloc) (regs_of_expr eadd))
+  | _ => IdSet.empty
+  end.
 
 Inductive stmtT :=
 | stmt_instr (i:instrT)

@@ -1371,6 +1371,72 @@ Section ExecUnit.
     eapply List.nth_error_Some. congr.
   Qed.
 
+  Lemma read_step_wf
+        tid ex ord vloc res ts lc1 mem lc2
+        (STEP: Local.read ex ord vloc res ts lc1 mem lc2)
+        (WF: Local.wf tid mem lc1)
+        (LOC: vloc.(ValA.annot).(View.ts) <= List.length mem):
+    Local.wf tid mem lc2.
+  Proof.
+    exploit Local.read_spec; eauto. intro READ_SPEC. guardH READ_SPEC.
+    inv STEP. ss.
+    assert (FWDVIEW: forall ord,
+               View.ts (FwdItem.read_view (Local.fwdbank lc1 vloc.(ValA.val)) ts ord) <= length mem).
+    { i. rewrite Local.fwd_read_view_le; eauto.
+      eapply read_wf; eauto.
+    }
+    inv WF. ss.
+    econs; viewtac; eauto.
+    - i. rewrite fun_add_spec. condtac; viewtac.
+    - i. exploit FWDBANK; eauto. intro Y. inv Y. des.
+      econs; eauto. rewrite TS, fun_add_spec. condtac; ss. inversion e. subst.
+      apply Memory.latest_ts_mon. apply join_l.
+    - i. rewrite fun_add_spec in *. destruct ex.
+      + inv H1. ss. condtac; [|congr]. econs; eauto.
+        * desH READ_SPEC. rewrite COH1 at 1. ss.
+        * s. apply join_r.
+      + exploit EXBANK; eauto. intro Y. inv Y. des. econs; eauto.
+        * rewrite TS. apply Memory.latest_ts_mon.
+          condtac; ss. inversion e. apply join_l.
+        * rewrite VIEW. condtac; ss. inversion e. rewrite H3. apply join_l.
+    - i. eapply PROMISES0; eauto. eapply Time.le_lt_trans; [|by eauto].
+      rewrite fun_add_spec. condtac; ss. inversion e. rewrite H2. apply join_l.
+  Qed.
+
+  Lemma fulfill_step_wf
+        ex ord vloc vval res ts tid view_pre lc1 mem lc2
+        (STEP: Local.fulfill ex ord vloc vval res ts tid view_pre lc1 mem lc2)
+        (WF: Local.wf tid mem lc1)
+        (LOC: vloc.(ValA.annot).(View.ts) <= List.length mem):
+    Local.wf tid mem lc2.
+  Proof.
+    inv WF. inv STEP. inv WRITABLE.
+    econs; viewtac; eauto using get_msg_wf, expr_wf.
+    - i. rewrite fun_add_spec. condtac; viewtac.
+    - i. rewrite ? fun_add_spec. condtac; viewtac.
+      inversion e. subst.
+      econs; viewtac.
+      { unfold Memory.get_msg in MSG. destruct ts; ss. rewrite MSG. condtac; ss. }
+      { etrans; [|apply Nat.lt_le_incl; eauto]. rewrite <- join_l. ss. }
+      { etrans; [|apply Nat.lt_le_incl; eauto]. rewrite <- join_r, <- join_l. ss. }
+      { revert MSG. unfold Memory.read, Memory.get_msg.
+        destruct ts; ss. i. rewrite MSG. ss. eexists. des_ifs.
+      }
+    - destruct ex; ss. i. exploit EXBANK; eauto. intro Y. inv Y. des. econs; eauto.
+      { rewrite TS, fun_add_spec. condtac; ss. inversion e. rewrite H3.
+        apply Memory.latest_ts_mon. apply Nat.le_lteq. left. ss.
+      }
+      { rewrite VIEW, fun_add_spec. condtac; ss. inversion e. rewrite H3. clear -COH0. lia. }
+    - i. revert IN. rewrite Promises.unset_o. condtac; ss. eauto.
+    - i. rewrite Promises.unset_o. rewrite fun_add_spec in TS. condtac.
+      { inversion e. subst. rewrite MSG in MSG0. destruct msg. inv MSG0. ss.
+        revert TS. condtac; ss; intuition.
+      }
+      { eapply PROMISES0; eauto. revert TS. condtac; ss. i.
+        inversion e. rewrite H2. rewrite COH0. ss.
+      }
+  Qed.
+
   Lemma state_step0_wf tid e1 e2 eu1 eu2
         (STEP: state_step0 tid e1 e2 eu1 eu2)
         (EVENT: eqts_event e1 e2)
@@ -1391,63 +1457,36 @@ Section ExecUnit.
     - econs; ss.
       eauto using rmap_add_wf, expr_wf.
     - inv RES. inv VIEW. inv VLOC. inv VIEW.
-      exploit Local.read_spec; eauto. intro READ_SPEC. guardH READ_SPEC.
-      inv STEP. ss. subst.
-      exploit FWDVIEW; eauto.
-      { eapply read_wf. eauto. }
-      i. econs; ss.
-      + apply rmap_add_wf; viewtac.
+      econs; ss.
+      + inv STEP. ss. subst.
+        exploit FWDVIEW; eauto.
+        { eapply read_wf. eauto. }
+        i. apply rmap_add_wf; viewtac.
         rewrite TS, <- TS0. viewtac.
         eauto using expr_wf.
-      + econs; viewtac; eauto using expr_wf.
-        all: try by rewrite <- TS0; eauto using expr_wf.
-        * i. rewrite fun_add_spec. condtac; viewtac.
-          rewrite <- TS0. eauto using expr_wf.
-        * i. exploit FWDBANK; eauto. intro Y. inv Y. des.
-          econs; eauto. rewrite TS1, fun_add_spec. condtac; ss. inversion e. subst.
-          apply Memory.latest_ts_mon. apply join_l.
-        * i. rewrite fun_add_spec in *. destruct ex0.
-          { inv H1. ss. condtac; [|congr]. econs; eauto.
-            - desH READ_SPEC. rewrite COH1 at 1. ss.
-            - s. apply join_r.
-          }
-          { exploit EXBANK; eauto. intro Y. inv Y. des. econs; eauto.
-            - rewrite TS1. apply Memory.latest_ts_mon.
-              condtac; ss. inversion e. apply join_l.
-            - rewrite VIEW. condtac; ss. inversion e. rewrite H3. apply join_l.
-          }
-        * i. eapply PROMISES0; eauto. eapply Time.le_lt_trans; [|by eauto].
-          rewrite fun_add_spec. condtac; ss. inversion e. rewrite H2. apply join_l.
+      + eapply read_step_wf; eauto.
+        rewrite <- TS0. eapply expr_wf; eauto.
     - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
-      inv STEP. inv WRITABLE. econs; ss.
-      + apply rmap_add_wf; viewtac.
+      econs; ss.
+      + inv STEP. inv WRITABLE.
+        apply rmap_add_wf; viewtac.
         rewrite TS. unfold ifc. condtac; [|by apply bot_spec]. eapply get_msg_wf. eauto.
-      + econs; viewtac; rewrite <- ? TS0, <- ? TS1; eauto using get_msg_wf, expr_wf.
-        * i. rewrite fun_add_spec. condtac; viewtac.
-        * i. rewrite ? fun_add_spec. condtac; viewtac.
-          inversion e. subst.
-          econs; viewtac; rewrite <- TS0, <- TS1 in *.
-          { unfold Memory.get_msg in MSG. destruct ts; ss. rewrite MSG. condtac; ss. }
-          { etrans; [|apply Nat.lt_le_incl; eauto]. rewrite <- join_l. ss. }
-          { etrans; [|apply Nat.lt_le_incl; eauto]. rewrite <- join_r, <- join_l. ss. }
-          { revert MSG. unfold Memory.read, Memory.get_msg.
-            destruct ts; ss. i. rewrite MSG. ss. eexists. des_ifs.
-          }
-        * destruct ex0; ss. i. exploit EXBANK; eauto. intro Y. inv Y. des. econs; eauto.
-          { rewrite TS2, fun_add_spec. condtac; ss. inversion e. rewrite H3.
-            apply Memory.latest_ts_mon. apply Nat.le_lteq. left. ss.
-          }
-          { rewrite VIEW, fun_add_spec. condtac; ss. inversion e. rewrite H3. clear -COH0. lia. }
-        * i. revert IN. rewrite Promises.unset_o. condtac; ss. eauto.
-        * i. rewrite Promises.unset_o. rewrite fun_add_spec in TS2. condtac.
-          { inversion e. subst. rewrite MSG in MSG0. destruct msg. inv MSG0. ss.
-            revert TS2. condtac; ss; intuition.
-          }
-          { eapply PROMISES0; eauto. revert TS2. condtac; ss. i.
-            inversion e. rewrite H2. rewrite COH0. ss.
-          }
+      + eapply fulfill_step_wf; eauto.
+        rewrite <- TS1. eapply expr_wf; eauto.
     - inv STEP. econs; ss. apply rmap_add_wf; viewtac.
       inv RES. inv VIEW. rewrite TS. s. apply bot_spec.
+    - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
+      econs; ss.
+      + inv STEP_READ. ss. subst.
+        exploit FWDVIEW; eauto.
+        { eapply read_wf. eauto. }
+        i. apply rmap_add_wf; viewtac.
+        rewrite TS0, <- TS. viewtac.
+        eauto using expr_wf.
+      + eapply fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+        { rewrite <- TS. eapply expr_wf; eauto. }
+        eapply read_step_wf; eauto.
+        rewrite <- TS. eapply expr_wf; eauto.
     - inv STEP. econs; ss. econs; viewtac.
     - inv STEP. econs; ss. econs; viewtac.
     - inv LC. econs; ss. econs; viewtac.
