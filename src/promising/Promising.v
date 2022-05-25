@@ -1600,6 +1600,9 @@ Section ExecUnit.
     - eapply state_step_incr. eauto.
     - eapply promise_step_incr. eauto.
   Qed.
+
+  Definition is_terminal (eu: t): Prop :=
+    State.is_terminal (state eu) /\ Local.promises (local eu) = bot.
 End ExecUnit.
 End ExecUnit.
 
