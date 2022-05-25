@@ -838,3 +838,11 @@ Module IdSet.
         apply mem_1 in MEM'0. eauto.
   Qed.
 End IdSet.
+
+
+Definition option_rel {A B} (rel: A -> B -> Prop) (x: option A) (y: option B): Prop :=
+  match x, y with
+  | Some x, Some y => rel x y
+  | None, None => True
+  | _, _ => False
+  end.
