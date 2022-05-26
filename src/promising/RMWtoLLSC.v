@@ -98,11 +98,11 @@ Inductive exclusive_free: forall (stmt: stmtT), Prop :=
 Variant sim_val (v_src v_tgt: ValA.t (A:=View.t (A:=unit))): Prop :=
 | sim_val_intro
     (VAL: ValA.val v_src = ValA.val v_tgt)
-    (ANNOT: le (ValA.annot v_src) (ValA.annot v_tgt))
+    (ANNOT: ValA.annot v_src = ValA.annot v_tgt)
 .
 
-Definition sim_rmap (tmp: Id.t) (rmap_src rmap_tgt: RMap.t (A:=View.t (A:=unit))): Prop :=
-  forall r (NEQ: r <> tmp),
+Definition sim_rmap (regs: IdSet.t) (rmap_src rmap_tgt: RMap.t (A:=View.t (A:=unit))): Prop :=
+  forall r (NEQ: ~ IdSet.In r regs),
     sim_val (RMap.find r rmap_src) (RMap.find r rmap_tgt).
 
 Variant sim_local (lc_src lc_tgt: Local.t (A:=unit)): Prop :=
@@ -120,66 +120,73 @@ Variant sim_local (lc_src lc_tgt: Local.t (A:=unit)): Prop :=
 .
 #[export] Hint Constructors sim_local: core.
 
-Lemma sim_local_step
-      e tid mem_tgt lc1_tgt lc2_tgt
-      mem_src lc1_src
-      (LOCAL: sim_local lc1_src lc1_tgt)
-      (MEMORY: mem_src = mem_tgt)
-      (STEP_TGT: Local.step e tid mem_tgt lc1_tgt lc2_tgt)
-      (EXFREE: match e with
-               | Event.read ex _ _ _
-               | Event.write ex _ _ _ _ => ex = false
-               | _ => True
-               end):
-  exists lc2_src,
-    (<<STEP_SRC: Local.step e tid mem_src lc1_src lc2_src>>) /\
-    (<<LOCAL2: sim_local lc2_src lc2_tgt>>).
+(* Lemma sim_local_step *)
+(*       e tid mem_tgt (lc1_tgt lc2_tgt: Local.t (A:=unit)) *)
+(*       mem_src lc1_src *)
+(*       (LOCAL: lc1_src = lc1_tgt) *)
+(*       (MEMORY: mem_src = mem_tgt) *)
+(*       (STEP_TGT: Local.step e tid mem_tgt lc1_tgt lc2_tgt) *)
+(*       (EXFREE: match e with *)
+(*                | Event.read ex _ _ _ *)
+(*                | Event.write ex _ _ _ _ => ex = false *)
+(*                | _ => True *)
+(*                end): *)
+(*   exists lc2_src, *)
+(*     (<<STEP_SRC: Local.step e tid mem_src lc1_src lc2_src>>) /\ *)
+(*     (<<LOCAL2: lc2_src = lc2_tgt>>). *)
+(* Proof. *)
+(*   subst. destruct lc1_tgt. *)
+(*   inv STEP_TGT; subst. *)
+(*   { (* internal *) *)
+(*     esplits; [econs 1|]; eauto. *)
+(*   } *)
+(*   { (* read *) *)
+(*     inv STEP. ss. *)
+(*     esplits; [econs 2|]. *)
+(*     - ss. *)
+(*     - econs; eauto. *)
+(*     - ss. *)
+(*   } *)
+(*   { (* fulfill *) *)
+(*     inv STEP. ss. *)
+(*     esplits; [econs 3|]. *)
+(*     - ss. *)
+(*     - econs; eauto. ss. *)
+(*       inv WRITABLE. ss. econs; eauto. i. ss. *)
+(*     - ss. *)
+(*   } *)
+(*   { (* write failure *) *)
+(*     inv STEP. ss. *)
+(*   } *)
+(*   { (* fadd *) *)
+(*     inv STEP_READ. ss. *)
+(*     inv STEP_FULFILL. ss. *)
+(*     esplits; [econs 5|]. *)
+(*     - ss. *)
+(*     - econs; eauto. *)
+(*     - econs; eauto. *)
+(*     - ss. *)
+(*   } *)
+(*   { (* isb *) *)
+(*     inv STEP. ss. *)
+(*     esplits; [econs 6|]; ss. *)
+(*   } *)
+(*   { (* dmb *) *)
+(*     inv STEP. ss. *)
+(*     esplits; [econs 7|]; ss. *)
+(*   } *)
+(*   { (* control *) *)
+(*     inv LC. ss. *)
+(*     esplits; [econs 8|]; ss. *)
+(*   }         *)
+(* Qed. *)
+
+Lemma unfold_rmw_to_llsc_stmts
+      tmp s stmts:
+  rmw_to_llsc_stmts tmp (s :: stmts) =
+  (rmw_to_llsc_stmt tmp s) ++ rmw_to_llsc_stmts tmp stmts.
 Proof.
-  destruct lc1_src, lc1_tgt. inv LOCAL; ss. subst.
-  inv STEP_TGT; subst.
-  { (* internal *)
-    esplits; [econs 1|]; eauto.
-  }
-  { (* read *)
-    inv STEP. ss.
-    esplits; [econs 2|].
-    - ss.
-    - econs; eauto.
-    - ss.
-  }
-  { (* fulfill *)
-    inv STEP. ss.
-    esplits; [econs 3|].
-    - ss.
-    - econs; eauto. ss.
-      inv WRITABLE. ss. econs; eauto. i. ss.
-    - ss.
-  }
-  { (* write failure *)
-    inv STEP. ss.
-  }
-  { (* fadd *)
-    inv STEP_READ. ss.
-    inv STEP_FULFILL. ss.
-    esplits; [econs 5|].
-    - ss.
-    - econs; eauto.
-    - econs; eauto. ss.
-      inv WRITABLE. ss. econs; eauto. i. ss.
-    - ss.
-  }
-  { (* isb *)
-    inv STEP. ss.
-    esplits; [econs 6|]; ss.
-  }
-  { (* dmb *)
-    inv STEP. ss.
-    esplits; [econs 7|]; ss.
-  }
-  { (* control *)
-    inv LC. ss.
-    esplits; [econs 8|]; ss.
-  }        
+   ss.
 Qed.
 
 
@@ -193,8 +200,8 @@ Section RMWtoLLSC.
         (FRESH: List.Forall (fresh tmp) stmts_src)
         (EXFREE: List.Forall exclusive_free stmts_src)
         (STMTS: stmts_tgt = rmw_to_llsc_stmts tmp stmts_src)
-        (RMAP: sim_rmap tmp rmap_src rmap_tgt)
-        (LOCAL: sim_local lc_src lc_tgt)
+        (RMAP: sim_rmap (IdSet.singleton tmp) rmap_src rmap_tgt)
+        (LOCAL: lc_src = lc_tgt)
         (MEMORY: mem_src = mem_tgt):
     @sim_eu tid
             (ExecUnit.mk (State.mk stmts_src rmap_src) lc_src mem_src)
@@ -205,8 +212,7 @@ Section RMWtoLLSC.
     pfold. red. ss. subst. splits.
     { (* terminal *)
       i. red in TERMINAL_TGT. ss. des.
-      esplits; try refl. red. ss. split; cycle 1.
-      { inv LOCAL. congr. }
+      esplits; try refl. red. ss. split; try congr.
       red in TERMINAL_TGT. red. ss.
       destruct stmts_src; ss.
       destruct s; ss. destruct i; ss.
@@ -215,21 +221,12 @@ Section RMWtoLLSC.
     i. inv STEP_TGT. inv STEP. ss.
     destruct stmts_src; try by inv STATE.
     destruct eu2_tgt as [[stmts2_tgt rmap2_tgt] lc2_tgt mem2_tgt]. ss. subst.
-    exploit sim_local_step; try exact LOCAL0; eauto.
-    { destruct s; inv STATE; ss.
-      - destruct i; ss. inv H1.
-        inv EXFREE. inv H1. destruct ex0; ss.
-      - destruct i; ss. inv H1.
-        inv EXFREE. inv H1. destruct ex0; ss.
-    }
-    i. des.
-
     destruct s; cycle 1.
     { (* if *)
       inv STATE.
       eexists (ExecUnit.mk _ _ _). splits.
       { econs 2; try refl. econs.
-        econs; try eapply STEP_SRC; ss.
+        econs; try eapply LOCAL; ss.
         econs; eauto.
         admit. (* sem_expr *)
       }
@@ -248,7 +245,7 @@ Section RMWtoLLSC.
       inv STATE.
       eexists (ExecUnit.mk _ _ _). splits.
       { econs 2; try refl. econs.
-        econs; try eapply STEP_SRC; ss.
+        econs; try eapply LOCAL; ss.
         econs; eauto.
       }
       right. eapply CIH; eauto.
@@ -257,7 +254,151 @@ Section RMWtoLLSC.
       - admit.
     }
 
-    admit.
+    inv FRESH. inv EXFREE.
+    rewrite unfold_rmw_to_llsc_stmts in STATE.
+    destruct i; ss.
+    { (* skip *)
+      inv STATE.
+      eexists (ExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs.
+        econs; try eapply LOCAL; ss.
+        econs.
+      }
+      right. eapply CIH; eauto.
+    }
+
+    { (* assign *)
+      inv STATE.
+      eexists (ExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs.
+        econs; try eapply LOCAL; ss.
+        econs; eauto.
+      }
+      right. eapply CIH; eauto.
+      admit.
+    }
+
+    { (* load *)
+      inv STATE.
+      eexists (ExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs.
+        econs; try eapply LOCAL; ss.
+        econs; eauto.
+        admit.
+      }
+      right. eapply CIH; eauto.
+      admit.
+    }
+
+    { (* store *)
+      inv STATE.
+      eexists (ExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs.
+        econs; try eapply LOCAL; ss.
+        econs; eauto.
+        - admit.
+        - admit.
+      }
+      right. eapply CIH; eauto.
+      admit.
+    }
+
+    { (* fadd *)
+      (* dowhile *)
+      inv STATE. inv LOCAL; ss. clear EVENT.
+      esplits; [refl|]. left.
+      pfold. red. s. splits.
+      { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+      (* exclusive load *)
+      i. rename rmap2_tgt into rmap_tgt.
+      destruct eu2_tgt as [[]].
+      inv STEP_TGT. inv STEP. ss. subst.
+      inv STATE. inv LOCAL; inv EVENT.
+      esplits; [refl|]. left.
+
+      revert ts res0 local STEP.
+      pcofix CIH_LOOP. i.
+      pfold. red. s. splits.
+      { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+      (* exclusive store *)
+      i. destruct eu2_tgt as [[]].
+      inv STEP_TGT. inv STEP0. ss. subst.
+      inv STATE. inv LOCAL; inv EVENT.
+
+      { (* exclusive store - succeed *)
+        clear CIH_LOOP.
+        eexists (ExecUnit.mk _ _ _). splits.
+        { econs 2; try refl. econs. econs; cycle 1.
+          - s. econs 5; try exact STEP; eauto.
+            replace (sem_expr rmap_tgt eloc) with (sem_expr (RMap.add res res0 rmap_tgt) eloc); eauto.
+            admit.
+          - ss.
+          - econs; eauto.
+            + admit.
+            + admit.
+        }
+        left. pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* if *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP1. ss. subst.
+        inv STATE. inv LOCAL; inv EVENT.
+        condtac; ss.
+        { admit. }
+        clear e X.
+        replace local1 with local0 in * by admit.
+        esplits; [refl|].
+        right. eapply CIH; eauto.
+        - rewrite List.app_nil_r. ss.
+        - admit.
+      }
+
+      { (* exclusive store - fail *)
+        inv STEP0. clear CIH EX.
+        esplits; try refl. left.
+        pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* if *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP0. ss. subst.
+        inv STATE. inv LOCAL; inv EVENT. inv LC. ss.
+        rewrite RMap.add_o. destruct (tmp == tmp); try congr. ss.
+        replace (join (Local.vcap local) bot) with (Local.vcap local); cycle 1.
+        { rewrite bot_join; ss. apply View.order. }
+        clear e.
+        esplits; try refl. left.
+        pfold. red. ss. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* dowhile *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP0. ss. subst.
+        inv STATE. inv LOCAL; inv EVENT.
+        esplits; [refl|]. left.
+        pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* load *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP0. ss. subst.
+        inv STATE. inv LOCAL; inv EVENT.
+        admit.
+      }
+    }
+
+    { (* barrier *)
+      inv STATE.
+      eexists (ExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs.
+        econs; try eapply STEP_SRC; ss.
+        econs.
+      }
+      right. eapply CIH; eauto.
+    }
   Admitted.
 End RMWtoLLSC.
 

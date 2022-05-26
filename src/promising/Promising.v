@@ -995,10 +995,10 @@ Section Local.
       (EVENT: event = Event.write ex ord vloc vval res)
       (STEP: write_failure ex res lc1 lc2)
   | step_fadd
-      ordr ordw vloc vold vnew ts_old ts_new lc1' view_pre
+      ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
       (EVENT: event = Event.fadd ordr ordw vloc vold vnew)
-      (STEP_READ: read false ordr vloc vold ts_old lc1 mem lc1')
-      (STEP_FULFILL: fulfill false ordw vloc vnew vold ts_new tid view_pre lc1' mem lc2)
+      (STEP_READ: read true ordr vloc vold ts_old lc1 mem lc1')
+      (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc2)
   | step_isb
       (EVENT: event = Event.barrier Barrier.isb)
       (STEP: isb lc1 lc2)
