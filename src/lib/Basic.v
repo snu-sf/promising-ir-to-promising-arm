@@ -837,6 +837,12 @@ Module IdSet.
         apply mem_1 in MEM'. apply remove_spec in MEM'. des.
         apply mem_1 in MEM'0. eauto.
   Qed.
+
+  Definition disjoint (lhs rhs: t): Prop :=
+    forall x
+      (LHS: In x lhs)
+      (RHS: In x rhs),
+      False.
 End IdSet.
 
 

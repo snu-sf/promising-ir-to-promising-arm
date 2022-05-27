@@ -27,30 +27,31 @@ Set Implicit Arguments.
 Set Nested Proofs Allowed.
 
 
-Fixpoint rmw_to_llsc_stmt (tmp: Id.t) (stmt: stmtT): list stmtT :=
+Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: stmtT): list stmtT :=
   match stmt with
   | stmt_instr (instr_fadd ordr ordw res eloc eadd) =>
     [stmt_dowhile
-       [stmt_instr (instr_load true ordr res eloc);
-        stmt_instr (instr_store true ordw tmp eloc (expr_op2 op_add (expr_reg res) eadd))]
-       (expr_op1 op_not (expr_reg tmp))]
+       [stmt_instr (instr_load true ordr tmp1 eloc);
+        stmt_instr (instr_store true ordw tmp2 eloc (expr_op2 op_add (expr_reg tmp1) eadd))]
+       (expr_op1 op_not (expr_reg tmp1));
+     stmt_instr (instr_assign res (expr_reg tmp1))]
   | stmt_if cond s1 s2 =>
     [stmt_if cond
-             (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp) s1))
-             (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp) s2))]
+             (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) s1))
+             (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) s2))]
   | stmt_dowhile s cond =>
     [stmt_dowhile
-       (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp) s)) cond]
+       (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) s)) cond]
   | _ => [stmt]
   end.
 
-Definition rmw_to_llsc_stmts (tmp: Id.t) (stmts: list stmtT): list stmtT :=
-  List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp) stmts).
+Definition rmw_to_llsc_stmts (tmp1 tmp2: Id.t) (stmts: list stmtT): list stmtT :=
+  List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) stmts).
 
 Definition rmw_to_llsc_program (p_src p_tgt: program): Prop :=
-  forall tid, exists tmp,
+  forall tid, exists tmp1 tmp2,
     option_rel
-      (fun stmts_src stmts_tgt => stmts_tgt = rmw_to_llsc_stmts tmp stmts_src)
+      (fun stmts_src stmts_tgt => stmts_tgt = rmw_to_llsc_stmts tmp1 tmp2 stmts_src)
       (IdMap.find tid p_src) (IdMap.find tid p_tgt).
 
 Inductive fresh (r: Id.t): forall (stmt: stmtT), Prop :=
@@ -182,9 +183,9 @@ Variant sim_local (lc_src lc_tgt: Local.t (A:=unit)): Prop :=
 (* Qed. *)
 
 Lemma unfold_rmw_to_llsc_stmts
-      tmp s stmts:
-  rmw_to_llsc_stmts tmp (s :: stmts) =
-  (rmw_to_llsc_stmt tmp s) ++ rmw_to_llsc_stmts tmp stmts.
+      tmp1 tmp2 s stmts:
+  rmw_to_llsc_stmts tmp1 tmp2 (s :: stmts) =
+  (rmw_to_llsc_stmt tmp1 tmp2 s) ++ rmw_to_llsc_stmts tmp1 tmp2 stmts.
 Proof.
    ss.
 Qed.
@@ -194,20 +195,22 @@ Section RMWtoLLSC.
   Hypothesis ARCH: arch = armv8.
 
   Lemma rmw_to_llsc_sim_eu
-        tid tmp
+        tid tmp1 tmp2
         stmts_src rmap_src lc_src mem_src
         stmts_tgt rmap_tgt lc_tgt mem_tgt
-        (FRESH: List.Forall (fresh tmp) stmts_src)
+        (TMP: tmp1 <> tmp2)
+        (FRESH1: List.Forall (fresh tmp1) stmts_src)
+        (FRESH2: List.Forall (fresh tmp2) stmts_src)
         (EXFREE: List.Forall exclusive_free stmts_src)
-        (STMTS: stmts_tgt = rmw_to_llsc_stmts tmp stmts_src)
-        (RMAP: sim_rmap (IdSet.singleton tmp) rmap_src rmap_tgt)
+        (STMTS: stmts_tgt = rmw_to_llsc_stmts tmp1 tmp2 stmts_src)
+        (RMAP: sim_rmap (IdSet.add tmp2 (IdSet.singleton tmp1)) rmap_src rmap_tgt)
         (LOCAL: lc_src = lc_tgt)
         (MEMORY: mem_src = mem_tgt):
     @sim_eu tid
             (ExecUnit.mk (State.mk stmts_src rmap_src) lc_src mem_src)
             (ExecUnit.mk (State.mk stmts_tgt rmap_tgt) lc_tgt mem_tgt).
   Proof.
-    revert_until tmp.
+    revert_until tmp2.
     pcofix CIH. i.
     pfold. red. ss. subst. splits.
     { (* terminal *)
@@ -235,7 +238,9 @@ Section RMWtoLLSC.
         + admit.
         + admit.
         + admit.
+        + admit.
       - right. eapply CIH; eauto.
+        + admit.
         + admit.
         + admit.
         + admit.
@@ -252,9 +257,10 @@ Section RMWtoLLSC.
       - admit.
       - admit.
       - admit.
+      - admit.
     }
 
-    inv FRESH. inv EXFREE.
+    inv FRESH1. inv FRESH2. inv EXFREE.
     rewrite unfold_rmw_to_llsc_stmts in STATE.
     destruct i; ss.
     { (* skip *)
@@ -332,7 +338,7 @@ Section RMWtoLLSC.
         eexists (ExecUnit.mk _ _ _). splits.
         { econs 2; try refl. econs. econs; cycle 1.
           - s. econs 5; try exact STEP; eauto.
-            replace (sem_expr rmap_tgt eloc) with (sem_expr (RMap.add res res0 rmap_tgt) eloc); eauto.
+            replace (sem_expr rmap_tgt eloc) with (sem_expr (RMap.add tmp1 res0 rmap_tgt) eloc); eauto.
             admit.
           - ss.
           - econs; eauto.
@@ -350,6 +356,15 @@ Section RMWtoLLSC.
         { admit. }
         clear e X.
         replace local1 with local0 in * by admit.
+        clear local1 LC.
+        esplits; [refl|].
+        left. pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* assign *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP1. ss. subst.
+        inv STATE. inv LOCAL; inv EVENT.
         esplits; [refl|].
         right. eapply CIH; eauto.
         - rewrite List.app_nil_r. ss.
