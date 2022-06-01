@@ -78,6 +78,26 @@ Proof.
   - apply IHl. auto.
 Qed.
 
+Lemma le_join_l A (eq le: relation A) `{_: orderC A eq le}
+      (a b: A)
+      (LE: le b a):
+  eq (join a b) a.
+Proof.
+  antisym.
+  - apply join_spec; ss. refl.
+  - apply join_l.
+Qed.
+
+Lemma le_join_r A (eq le: relation A) `{_: orderC A eq le}
+      (a b: A)
+      (LE: le a b):
+  eq (join a b) b.
+Proof.
+  antisym.
+  - apply join_spec; ss. refl.
+  - apply join_r.
+Qed.
+
 
 Definition equiv (A:Type) `{_: Equivalence A} := R.
 Definition le (A:Type) `{_: orderC A} := LE.
