@@ -27,8 +27,8 @@ Set Implicit Arguments.
 Set Nested Proofs Allowed.
 
 
-Module RelPFLocal.
-  Section RelPFLocal.
+Module PFRelLocal.
+  Section PFRelLocal.
     Import Local.
     Context `{A: Type, _: orderC A eq}.
 
@@ -91,19 +91,19 @@ Module RelPFLocal.
     .
     #[local]
      Hint Constructors step: core.
-  End RelPFLocal.
-End RelPFLocal.
+  End PFRelLocal.
+End PFRelLocal.
 
 
-Module RelPFExecUnit.
-  Section RelPFExecUnit.
+Module PFRelExecUnit.
+  Section PFRelExecUnit.
     Import ExecUnit.
     Context `{A: Type, _: orderC A eq}.
 
     Variant state_step0 (tid:Id.t) (e1 e2:Event.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
     | state_step0_intro
         (STATE: State.step e1 eu1.(state) eu2.(state))
-        (LOCAL: RelPFLocal.step e2 tid eu1.(local) eu1.(mem) eu2.(local)  eu2.(mem))
+        (LOCAL: PFRelLocal.step e2 tid eu1.(local) eu1.(mem) eu2.(local)  eu2.(mem))
     .
     #[local]
      Hint Constructors state_step0: core.
@@ -219,18 +219,18 @@ Module RelPFExecUnit.
     Proof.
       inv STEP. eapply state_step0_wf; eauto. refl.
     Qed.
-  End RelPFExecUnit.
-End RelPFExecUnit.
+  End PFRelExecUnit.
+End PFRelExecUnit.
 
 
-Module RelPFMachine.
+Module PFRelMachine.
   Import Machine.
 
   Variant exec (p:program) (m:t): Prop :=
   | exec_intro
-      (STEP: rtc (step RelPFExecUnit.step) (init p) m)
+      (STEP: rtc (step PFRelExecUnit.step) (init p) m)
       (NOPROMISE: no_promise m)
   .
   #[global]
    Hint Constructors exec: core.
-End RelPFMachine.
+End PFRelMachine.
