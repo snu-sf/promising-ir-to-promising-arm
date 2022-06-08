@@ -1517,6 +1517,31 @@ Section ExecUnit.
     inv WF. econs. i. rewrite RMAP, app_length. lia.
   Qed.
 
+  Lemma promise_wf
+        loc val ts tid lc1 mem1 lc2 mem2
+        (PROMISE: Local.promise (A:=A) loc val ts tid lc1 mem1 lc2 mem2)
+        (WF: Local.wf tid mem1 lc1):
+    Local.wf tid mem2 lc2.
+  Proof.
+    inv WF. inv PROMISE. inv MEM2. econs; eauto.
+    all: try rewrite List.app_length; s; try lia.
+    - i. rewrite COH. lia.
+    - i. destruct (FWDBANK loc0). des. econs; esplits; ss.
+      + rewrite TS. apply Memory.latest_ts_append.
+      + apply Memory.read_mon; eauto.
+    - i. exploit EXBANK; eauto. intro Y. inv Y. des.
+      econs; esplits; ss.
+      + rewrite TS. apply Memory.latest_ts_append.
+      + apply Memory.read_mon. eauto.
+    - i. revert IN. rewrite Promises.set_o. condtac.
+      + inversion e. i. inv IN. lia.
+      + i. exploit PROMISES; eauto. lia.
+    - i. rewrite Promises.set_o. apply Memory.get_msg_snoc_inv in MSG. des.
+      + destruct ts; ss. condtac; ss.
+        eapply PROMISES0; eauto.
+      + subst. condtac; ss. congr.
+  Qed.
+
   Lemma promise_step_wf tid eu1 eu2
         (STEP: promise_step tid eu1 eu2)
         (WF: wf tid eu1):
@@ -1524,26 +1549,10 @@ Section ExecUnit.
   Proof.
     destruct eu1 as [state1 local1 mem1].
     destruct eu2 as [state2 local2 mem2].
-    inv WF. inv STEP. ss. subst.
-    inv LOCAL. inv LOCAL0. inv MEM2. econs; ss.
-    - apply rmap_append_wf. ss.
-    - econs; eauto.
-      all: try rewrite List.app_length; s; try lia.
-      + i. rewrite COH. lia.
-      + i. destruct (FWDBANK loc0). des. econs; esplits; ss.
-        * rewrite TS. apply Memory.latest_ts_append.
-        * apply Memory.read_mon; eauto.
-      + i. exploit EXBANK; eauto. intro Y. inv Y. des.
-        econs; esplits; ss.
-        * rewrite TS. apply Memory.latest_ts_append.
-        * apply Memory.read_mon. eauto.
-      + i. revert IN. rewrite Promises.set_o. condtac.
-        * inversion e. i. inv IN. lia.
-        * i. exploit PROMISES; eauto. lia.
-      + i. rewrite Promises.set_o. apply Memory.get_msg_snoc_inv in MSG. des.
-        * destruct ts; ss. condtac; ss.
-          eapply PROMISES0; eauto.
-        * subst. condtac; ss. congr.
+    inv WF. inv STEP. ss. subst. econs; ss.
+    - inv LOCAL0. inv MEM2.
+      apply rmap_append_wf. ss.
+    - eapply promise_wf; eauto.
   Qed.
 
   Lemma step_wf tid eu1 eu2
