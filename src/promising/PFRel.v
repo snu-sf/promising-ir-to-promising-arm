@@ -103,7 +103,7 @@ Module PFRelExecUnit.
     Variant state_step0 (tid:Id.t) (e1 e2:Event.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
     | state_step0_intro
         (STATE: State.step e1 eu1.(state) eu2.(state))
-        (LOCAL: PFRelLocal.step e2 tid eu1.(local) eu1.(mem) eu2.(local)  eu2.(mem))
+        (LOCAL: PFRelLocal.step e2 tid eu1.(local) eu1.(mem) eu2.(local) eu2.(mem))
     .
     #[local]
      Hint Constructors state_step0: core.
@@ -233,4 +233,80 @@ Module PFRelMachine.
   .
   #[global]
    Hint Constructors exec: core.
+
+  Variant pf_rel_until_eu (tid: Id.t) (n: nat) (eu1 eu2: ExecUnit.t (A:=unit)): Prop :=
+  | pf_re_until_eu_intro
+      eu
+      (STEPS1: rtc (PFRelExecUnit.state_step tid) eu1 eu)
+      (PROMISES: forall ts (LOOKUP: Promises.lookup ts eu.(ExecUnit.local).(Local.promises)), ts > n)
+      (STEPS2: rtc (ExecUnit.state_step tid) eu eu2)
+      (MEMORY: eu1.(ExecUnit.mem) = eu2.(ExecUnit.mem))
+  .
+  #[global]
+   Hint Constructors pf_rel_until_eu: core.
+
+  Variant pf_rel_until (n: nat) (m_init m_final: t): Prop :=
+  | pf_rel_until_intro
+      m1 m2
+      (PF_REL_STEPS: rtc (step PFRelExecUnit.step) m_init m1)
+      (LENGTH: length m1.(mem) = n)
+      (PROMISES: rtc (step ExecUnit.promise_step) m1 m2)
+      (STATE_EXEC: IdMap.Forall2
+                     (fun tid sl1 sl2 =>
+                        pf_rel_until_eu
+                          tid n
+                          (ExecUnit.mk (fst sl1) (snd sl1) m2.(mem))
+                          (ExecUnit.mk (fst sl2) (snd sl2) m2.(mem)))
+                     m2.(tpool) m_final.(tpool))
+      (MEMORY: m2.(mem) = m_final.(mem))
+      (NOPROMISE: no_promise m_final)
+  .
+  #[global]
+   Hint Constructors pf_rel_until: core.
+
+  Lemma pf_exec_pf_rel_until
+        p m
+        (PF_EXEC: Machine.pf_exec p m):
+    pf_rel_until 0 (Machine.init p) m.
+  Proof.
+    inv PF_EXEC. econs.
+    - refl.
+    - ss.
+    - eauto.
+    - inv STEP2. ii.
+      specialize (TPOOL id). inv TPOOL; eauto.
+      econs. econs; eauto. ss.
+      admit.
+    - inv STEP2. ss.
+    - ss.
+  Admitted.
+
+  Lemma pf_rel_until_step
+        n m_init m_final
+        (LENGTH: n < length m_final.(mem))
+        (UNTIL: pf_rel_until n m_init m_final):
+    pf_rel_until (S n) m_init m_final.
+  Proof.
+    inv UNTIL. inv PROMISES.
+    { rewrite MEMORY in *. lia. }
+    rename y into m. inv H.
+    dup STATE_EXEC.
+  Admitted.
+
+  Lemma pf_rel_until_pf_rel_exec
+        n p m
+        (UNTIL: pf_rel_until n (Machine.init p) m)
+        (LENGTH: length m.(mem) <= n):
+    PFRelMachine.exec p m.
+  Proof.
+    inv UNTIL.
+  Admitted.
 End PFRelMachine.
+
+
+Lemma promising_to_pf_release
+      p m
+      (EXEC: Machine.pf_exec p m):
+  PFRelMachine.exec p m.
+Proof.
+Admitted.
