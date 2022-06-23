@@ -775,6 +775,52 @@ Module Promises.
       generalize (Pos.succ_pred_or x). i. des; [congr|].
       rewrite H in *. ss.
   Qed.
+
+  Definition le (lhs rhs: t): Prop :=
+    forall i, lookup i lhs -> lookup i rhs.
+
+  Global Program Instance le_PreOrder: PreOrder le.
+  Next Obligation.
+    ii. auto.
+  Qed.
+  Next Obligation.
+    ii. auto.
+  Qed.
+
+  Lemma le_antisym
+        p1 p2
+        (LE1: le p1 p2)
+        (LE2: le p2 p1):
+    p1 = p2.
+  Proof.
+    apply ext. i.
+    destruct (lookup i p1) eqn:LOOKUP1.
+    - apply LE1 in LOOKUP1. rewrite LOOKUP1. ss.
+    - destruct (lookup i p2) eqn:LOOKUP2; ss.
+      apply LE2 in LOOKUP2. congr.
+  Qed.
+
+  Lemma set_le ts p:
+    le p (set ts p).
+  Proof.
+    ii. rewrite set_o. condtac; ss.
+    inversion e. subst.
+    destruct ts; ss.
+  Qed.
+
+  Lemma unset_le ts p:
+    le (unset ts p) p.
+  Proof.
+    ii. revert H.
+    rewrite unset_o. condtac; ss.
+  Qed.
+
+  Lemma unset_set_le ts p:
+    le (unset ts (set ts p)) p.
+  Proof.
+    ii. revert H.
+    rewrite unset_o, set_o. condtac; ss.
+  Qed.
 End Promises.
 
 Module Local.
@@ -1159,8 +1205,8 @@ Section Local.
   Proof.
     destruct (Promises.lookup ts (Local.promises lc)) eqn:X; ss.
     inv WF. exploit PROMISES; eauto. clear -ABOVE. lia.
-  Qed.
 
+  Qed.
   Inductive le (lhs rhs:t): Prop :=
   | le_intro
       (COH: forall loc, Order.le (lhs.(coh) loc).(View.ts) (rhs.(coh) loc).(View.ts))
@@ -1253,6 +1299,18 @@ Section Local.
     - eapply isb_incr. eauto.
     - eapply dmb_incr. eauto.
     - eapply control_incr. eauto.
+  Qed.
+
+  Lemma step_promises_le
+        e tid mem lc1 lc2
+        (STEP: step e tid mem lc1 lc2):
+    Promises.le (promises lc2) (promises lc1).
+  Proof.
+    inv STEP; ss; try by (inv STEP0; ss).
+    - inv STEP0. ss. apply Promises.unset_le.
+    - inv STEP_READ. inv STEP_FULFILL. ss.
+      apply Promises.unset_le.
+    - inv LC. ss.
   Qed.
 End Local.
 End Local.
@@ -1612,6 +1670,31 @@ Section ExecUnit.
 
   Definition is_terminal (eu: t): Prop :=
     State.is_terminal (state eu) /\ Local.promises (local eu) = bot.
+
+  Lemma state_step0_promises_le
+        tid e1 e2 eu1 eu2
+        (STEP: state_step0 tid e1 e2 eu1 eu2):
+    Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
+  Proof.
+    inv STEP. eauto using Local.step_promises_le.
+  Qed.
+
+  Lemma state_step_promises_le
+        tid eu1 eu2
+        (STEP: state_step tid eu1 eu2):
+    Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
+  Proof.
+    inv STEP. eauto using state_step0_promises_le.
+  Qed.
+
+  Lemma rtc_state_step_promises_le
+        tid eu1 eu2
+        (STEPS: rtc (state_step tid) eu1 eu2):
+    Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
+  Proof.
+    induction STEPS; ss.
+    etrans; eauto using state_step_promises_le.
+  Qed.
 End ExecUnit.
 End ExecUnit.
 
