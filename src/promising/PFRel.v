@@ -245,9 +245,9 @@ Module PFRelExecUnit.
     #[local]
      Hint Constructors fulfilled: core.
 
-    Variant fulfill_step (tid:Id.t) (ts: Time.t) (eu1 eu2:t): Prop :=
+    Variant fulfill_step (tid:Id.t) (ts: Time.t) (e:Event.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
     | fulfill_step_intro
-        (STEP: ExecUnit.state_step tid eu1 eu2)
+        (STEP: ExecUnit.state_step0 tid e e eu1 eu2)
         (FULFILL: fulfilled ts eu1 eu2)
     .
     #[local]
@@ -468,9 +468,9 @@ Module PFRelExecUnit.
           tid eu1 eu4 ts
           (STEPS: rtc (ExecUnit.state_step tid) eu1 eu4)
           (FULFILL: fulfilled ts eu1 eu4):
-      exists eu2 eu3,
+      exists e eu2 eu3,
         (<<STEPS1: rtc (ExecUnit.state_step tid) eu1 eu2>>) /\
-        (<<FULFILL: fulfill_step tid ts eu2 eu3>>) /\
+        (<<FULFILL: fulfill_step tid ts e eu2 eu3>>) /\
         (<<STEPS2: rtc (ExecUnit.state_step tid) eu3 eu4>>).
     Proof.
       induction STEPS.
@@ -482,7 +482,23 @@ Module PFRelExecUnit.
       { exploit IHSTEPS; eauto. i. des.
         esplits; try exact FULFILL0; eauto.
       }
-      esplits; [refl|..]; eauto.
+      inv H1. esplits; [refl|..]; eauto.
+    Qed.
+
+    Lemma rtc_last_release
+          tid eu1 eu4
+          (STEPS: rtc (ExecUnit.state_step tid) eu1 eu4):
+      (exists eu2 eu3,
+          (<<STEPS: rtc (ExecUnit.state_step tid) eu1 eu2>>) /\
+          (<<REL: rel_step tid eu2 eu3>>) /\
+          (<<NON_REL_STEPS: rtc (non_rel_step tid) eu3 eu4>>)) \/
+      (<<NON_REL_STEPS: rtc (non_rel_step tid) eu1 eu4>>).
+    Proof.
+      induction STEPS; eauto. des.
+      { left. esplits; [econs 2|..]; eauto. }
+      inv H1. destruct (is_release e) eqn:REL.
+      { left. esplits; [refl|..]; eauto. }
+      { right. econs 2; eauto. econs; eauto. congr. }
     Qed.
 
     Variant more_promises (eu1 eu2: t): Prop :=
@@ -560,6 +576,11 @@ Module PFRelMachine.
   .
   #[global]
    Hint Constructors exec: core.
+
+  Definition promises_sound (m:t): Prop :=
+    forall tid st lc
+      (FIND: IdMap.find tid m.(tpool) = Some (st, lc)),
+      promises_sound tid (Local.promises lc) m.(mem).
 
   Lemma rtc_promise_step_more_promises
         m1 m2
@@ -649,6 +670,7 @@ Module PFRelMachine.
 
   Lemma pf_rel_until_step
         n m_init m_final
+        (SOUND: promises_sound m_init)
         (LENGTH: n < length m_final.(mem))
         (UNTIL: pf_rel_until n m_init m_final):
     pf_rel_until (S n) m_init m_final.
