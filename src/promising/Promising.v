@@ -587,12 +587,6 @@ Section Eqts.
       (VVAL: eqts_val vval1 vval2)
       (RES: eqts_val res1 res2):
       eqts_event (Event.write ex ord vloc1 vval1 res1) (Event.write ex ord vloc2 vval2 res2)
-  | eqts_event_fadd
-      ordr ordw vloc1 vloc2 vold1 vold2 vnew1 vnew2
-      (VLOC: eqts_val vloc1 vloc2)
-      (VOLD: eqts_val vold1 vold2)
-      (VNEW: eqts_val vnew1 vnew2):
-      eqts_event (Event.fadd ordr ordw vloc1 vold1 vnew1) (Event.fadd ordr ordw vloc2 vold2 vnew2)
   | eqts_event_barrier
       b:
       eqts_event (Event.barrier b) (Event.barrier b)
@@ -1040,11 +1034,6 @@ Section Local.
       ex ord vloc vval res
       (EVENT: event = Event.write ex ord vloc vval res)
       (STEP: write_failure ex res lc1 lc2)
-  | step_fadd
-      ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
-      (EVENT: event = Event.fadd ordr ordw vloc vold vnew)
-      (STEP_READ: read true ordr vloc vold ts_old lc1 mem lc1')
-      (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc2)
   | step_isb
       (EVENT: event = Event.barrier Barrier.isb)
       (STEP: isb lc1 lc2)
@@ -1293,9 +1282,6 @@ Section Local.
     - eapply read_incr. eauto.
     - eapply fulfill_incr. eauto.
     - eapply write_failure_incr. eauto.
-    - hexploit read_incr; eauto. i.
-      hexploit fulfill_incr; eauto. i.
-      etrans; eauto.
     - eapply isb_incr. eauto.
     - eapply dmb_incr. eauto.
     - eapply control_incr. eauto.
@@ -1308,8 +1294,6 @@ Section Local.
   Proof.
     inv STEP; ss; try by (inv STEP0; ss).
     - inv STEP0. ss. apply Promises.unset_le.
-    - inv STEP_READ. inv STEP_FULFILL. ss.
-      apply Promises.unset_le.
     - inv LC. ss.
   Qed.
 End Local.
@@ -1533,18 +1517,6 @@ Section ExecUnit.
         rewrite <- TS1. eapply expr_wf; eauto.
     - inv STEP. econs; ss. apply rmap_add_wf; viewtac.
       inv RES. inv VIEW. rewrite TS. s. apply bot_spec.
-    - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
-      econs; ss.
-      + inv STEP_READ. ss. subst.
-        exploit FWDVIEW; eauto.
-        { eapply read_wf. eauto. }
-        i. apply rmap_add_wf; viewtac.
-        rewrite TS0, <- TS. viewtac.
-        eauto using expr_wf.
-      + eapply fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
-        { rewrite <- TS. eapply expr_wf; eauto. }
-        eapply read_step_wf; eauto.
-        rewrite <- TS. eapply expr_wf; eauto.
     - inv STEP. econs; ss. econs; viewtac.
     - inv STEP. econs; ss. econs; viewtac.
     - inv LC. econs; ss. econs; viewtac.
