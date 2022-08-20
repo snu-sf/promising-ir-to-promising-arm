@@ -361,7 +361,7 @@ Section RMWExecUnit.
 End RMWExecUnit.
 End RMWExecUnit.
 
-Module Machine.
+Module RMWMachine.
   Inductive t := mk {
     tpool: IdMap.t (RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit));
     mem: Memory.t;
@@ -775,8 +775,8 @@ Module Machine.
       subst. condtac; ss; [|congr]. rewrite Promises.set_o. condtac; [|congr]. ss.
   Qed.
 
-  Definition init_with_promises (p:rmw_program) (mem:Memory.t): Machine.t :=
-    Machine.mk
+  Definition init_with_promises (p:rmw_program) (mem:Memory.t): t :=
+    mk
       (IdMap.mapi (fun tid stmts =>
                      (RMWState.init stmts,
                       Local.init_with_promises (promises_from_mem tid mem)))
@@ -787,9 +787,9 @@ Module Machine.
         p promises
         (MEM: forall msg (MSG: List.In msg promises), IdMap.find msg.(Msg.tid) p <> None):
     exists m,
-      <<STEP: rtc (Machine.step RMWExecUnit.promise_step) (Machine.init p) m>> /\
-      <<TPOOL: IdMap.Equal m.(Machine.tpool) (init_with_promises p promises).(Machine.tpool)>> /\
-      <<MEM: m.(Machine.mem) = promises>>.
+      <<STEP: rtc (step RMWExecUnit.promise_step) (init p) m>> /\
+      <<TPOOL: IdMap.Equal m.(tpool) (init_with_promises p promises).(tpool)>> /\
+      <<MEM: m.(mem) = promises>>.
   Proof.
     revert MEM. induction promises using List.rev_ind; i.
     { esplits; eauto. ii. s. rewrite IdMap.map_spec, IdMap.mapi_spec.
@@ -806,7 +806,7 @@ Module Machine.
     | [|- context[(?f <> None) -> _]] => destruct f eqn:FIND
     end; ss.
     intro X. clear X.
-    eexists (Machine.mk _ _). esplits.
+    eexists (mk _ _). esplits.
     - etrans; [eauto|]. econs 2; [|refl].
       econs.
       + rewrite TPOOL, IdMap.mapi_spec, FIND. ss.
@@ -842,4 +842,4 @@ Module Machine.
     repeat condtac; try congr.
     inversion e. subst. rewrite FIND. destruct (IdMap.find tid p); ss. i. inv H. ss.
   Qed.
-End Machine.
+End RMWMachine.

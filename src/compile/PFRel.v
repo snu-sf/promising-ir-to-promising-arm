@@ -21,7 +21,9 @@ Require Import PromisingArch.lib.Time.
 Require Import PromisingArch.lib.Lang.
 
 Require Import PromisingArch.promising.Promising.
-Require Import PromisingArch.promising.Sim.
+
+Require Import PromisingArch.compile.RMWLang.
+Require Import PromisingArch.compile.RMWPromising.
 
 Set Implicit Arguments.
 Set Nested Proofs Allowed.
@@ -30,7 +32,8 @@ Set Nested Proofs Allowed.
 Definition promises_eq_until (n: Time.t) (p1 p2: Promises.t): Prop :=
   forall ts (LE: ts <= n), Promises.lookup ts p1 = Promises.lookup ts p2.
 
-Program Instance promises_eq_until_Equivalence (n: Time.t): Equivalence (promises_eq_until n).
+#[export] Program Instance promises_eq_until_Equivalence (n: Time.t):
+  Equivalence (promises_eq_until n).
 Next Obligation.
   ii. ss.
 Qed.
@@ -65,11 +68,11 @@ Proof.
   ii. eauto.
 Qed.
 
-Definition is_release {A} `{_: orderC A} (e: Event.t (A:=A)): bool :=
+Definition is_release {A} `{_: orderC A} (e: RMWEvent.t (A:=A)): bool :=
   match e with
-  | Event.write _ ordw _ _ _
-  | Event.fadd _ ordw _ _ _ => OrdW.ge OrdW.release_pc ordw
-  | Event.barrier (Barrier.dmb rr rw wr ww) => andb rw ww
+  | RMWEvent.write ordw _ _ _
+  | RMWEvent.fadd _ ordw _ _ _ => OrdW.ge OrdW.release_pc ordw
+  | RMWEvent.barrier (Barrier.dmb rr rw wr ww) => andb rw ww
   | _ => false
   end.
 
@@ -79,60 +82,60 @@ Module PFRelLocal.
     Import Local.
     Context `{A: Type, _: orderC A eq}.
 
-    Variant step (event:Event.t (A:=View.t (A:=A))) (tid:Id.t)
+    Variant step (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t)
               (lc1:t) (mem1:Memory.t) (lc2:t) (mem2:Memory.t): Prop :=
     | step_internal
-        (EVENT: event = Event.internal)
+        (EVENT: event = RMWEvent.internal)
         (LC: lc2 = lc1)
         (MEM: mem2 = mem1)
     | step_read
-        ex ord vloc res ts
-        (EVENT: event = Event.read ex ord vloc res)
-        (STEP: read ex ord vloc res ts lc1 mem1 lc2)
+        ord vloc res ts
+        (EVENT: event = RMWEvent.read ord vloc res)
+        (STEP: read false ord vloc res ts lc1 mem1 lc2)
         (MEM: mem2 = mem1)
     | step_fulfill
-        ex ord vloc vval res ts view_pre
-        (EVENT: event = Event.write ex ord vloc vval res)
+        ord vloc vval res ts view_pre
+        (EVENT: event = RMWEvent.write ord vloc vval res)
         (ORD: OrdW.ge ord OrdW.release_pc)
-        (STEP: fulfill ex ord vloc vval res ts tid view_pre lc1 mem1 lc2)
+        (STEP: fulfill false ord vloc vval res ts tid view_pre lc1 mem1 lc2)
         (MEM: mem2 = mem1)
     | step_write
         lc1'
-        ex ord vloc vval res ts view_pre
-        (EVENT: event = Event.write ex ord vloc vval res)
+        ord vloc vval res ts view_pre
+        (EVENT: event = RMWEvent.write ord vloc vval res)
         (STEP_PROMISE: promise vloc.(ValA.val) vval.(ValA.val) ts tid lc1 mem1 lc1' mem2)
-        (STEP_FULFILL: fulfill ex ord vloc vval res ts tid view_pre lc1' mem2 lc2)
+        (STEP_FULFILL: fulfill false ord vloc vval res ts tid view_pre lc1' mem2 lc2)
     | step_write_failure
-        ex ord vloc vval res
-        (EVENT: event = Event.write ex ord vloc vval res)
-        (STEP: write_failure ex res lc1 lc2)
+        ord vloc vval res
+        (EVENT: event = RMWEvent.write ord vloc vval res)
+        (STEP: write_failure false res lc1 lc2)
         (MEM: mem2 = mem1)
     | step_fadd_fulfill
         ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
-        (EVENT: event = Event.fadd ordr ordw vloc vold vnew)
+        (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
         (ORD: OrdW.ge ordw OrdW.release_pc)
         (STEP_READ: read true ordr vloc vold ts_old lc1 mem1 lc1')
         (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem1 lc2)
         (MEM: mem2 = mem1)
     | step_fadd_write
         ordr ordw vloc vold vnew ts_old ts_new res lc1' lc1'' view_pre
-        (EVENT: event = Event.fadd ordr ordw vloc vold vnew)
+        (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
         (STEP_READ: read true ordr vloc vold ts_old lc1 mem1 lc1')
         (STEP_PROMISE: promise vloc.(ValA.val) vnew.(ValA.val) ts_new tid lc1' mem1 lc1'' mem2)
         (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1'' mem2 lc2)
     | step_isb
-        (EVENT: event = Event.barrier Barrier.isb)
+        (EVENT: event = RMWEvent.barrier Barrier.isb)
         (STEP: isb lc1 lc2)
         (MEM: mem2 = mem1)
     | step_dmb
         rr rw wr ww
-        (EVENT: event = Event.barrier (Barrier.dmb rr rw wr ww))
+        (EVENT: event = RMWEvent.barrier (Barrier.dmb rr rw wr ww))
         (PROMISES: andb rw ww = true -> lc1.(Local.promises) = bot)
         (STEP: dmb rr rw wr ww lc1 lc2)
         (MEM: mem2 = mem1)
     | step_control
         ctrl
-        (EVENT: event = Event.control ctrl)
+        (EVENT: event = RMWEvent.control ctrl)
         (LC: control ctrl lc1 lc2)
         (MEM: mem2 = mem1)
     .
@@ -193,12 +196,12 @@ End PFRelLocal.
 
 Module PFRelExecUnit.
   Section PFRelExecUnit.
-    Import ExecUnit.
+    Import RMWExecUnit.
     Context `{A: Type, _: orderC A eq}.
 
-    Variant state_step0 (tid:Id.t) (e1 e2:Event.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
+    Variant state_step0 (tid:Id.t) (e1 e2:RMWEvent.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
     | state_step0_intro
-        (STATE: State.step e1 eu1.(state) eu2.(state))
+        (STATE: RMWState.step e1 eu1.(state) eu2.(state))
         (LOCAL: PFRelLocal.step e2 tid eu1.(local) eu1.(mem) eu2.(local) eu2.(mem))
     .
     #[local]
@@ -222,7 +225,7 @@ Module PFRelExecUnit.
     Variant non_rel_step (tid:Id.t) (eu1 eu2:t): Prop :=
     | non_rel_step_intro
         e
-        (STEP: ExecUnit.state_step0 tid e e eu1 eu2)
+        (STEP: RMWExecUnit.state_step0 tid e e eu1 eu2)
         (REL: ~ is_release e)
     .
     #[local]
@@ -231,7 +234,7 @@ Module PFRelExecUnit.
     Variant rel_step (tid:Id.t) (eu1 eu2:t): Prop :=
     | rel_step_intro
         e
-        (STEP: ExecUnit.state_step0 tid e e eu1 eu2)
+        (STEP: RMWExecUnit.state_step0 tid e e eu1 eu2)
         (REL: is_release e)
     .
     #[local]
@@ -239,15 +242,15 @@ Module PFRelExecUnit.
 
     Variant fulfilled (ts: Time.t) (eu1 eu2: t): Prop :=
     | fulfilled_intro
-        (BEFORE: Promises.lookup ts eu1.(ExecUnit.local).(Local.promises))
-        (AFTER: ~ Promises.lookup ts eu2.(ExecUnit.local).(Local.promises))
+        (BEFORE: Promises.lookup ts eu1.(local).(Local.promises))
+        (AFTER: ~ Promises.lookup ts eu2.(local).(Local.promises))
     .
     #[local]
      Hint Constructors fulfilled: core.
 
-    Variant fulfill_step (tid:Id.t) (ts: Time.t) (e:Event.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
+    Variant fulfill_step (tid:Id.t) (ts: Time.t) (e:RMWEvent.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
     | fulfill_step_intro
-        (STEP: ExecUnit.state_step0 tid e e eu1 eu2)
+        (STEP: RMWExecUnit.state_step0 tid e e eu1 eu2)
         (FULFILL: fulfilled ts eu1 eu2)
     .
     #[local]
@@ -255,7 +258,7 @@ Module PFRelExecUnit.
 
     Lemma state_step0_wf tid e1 e2 eu1 eu2
           (STEP: state_step0 tid e1 e2 eu1 eu2)
-          (EVENT: eqts_event e1 e2)
+          (EVENT: eqts_rmw_event e1 e2)
           (WF: wf tid eu1):
       wf tid eu2.
     Proof.
@@ -271,75 +274,74 @@ Module PFRelExecUnit.
       generalize LOCAL. intro WF_LOCAL1.
       inv STATE0; inv LOCAL0; inv EVENT; inv LOCAL; ss.
       - econs; ss.
-        eauto using rmap_add_wf, expr_wf.
+        eauto using ExecUnit.rmap_add_wf, ExecUnit.expr_wf.
       - inv RES. inv VIEW. inv VLOC. inv VIEW.
         econs; ss.
         + inv STEP. ss. subst.
           exploit FWDVIEW; eauto.
-          { eapply read_wf. eauto. }
-          i. apply rmap_add_wf; viewtac.
+          { eapply ExecUnit.read_wf. eauto. }
+          i. apply ExecUnit.rmap_add_wf; viewtac.
           rewrite TS, <- TS0. viewtac.
-          eauto using expr_wf.
-        + eapply read_step_wf; eauto.
-          rewrite <- TS0. eapply expr_wf; eauto.
+          eauto using ExecUnit.expr_wf.
+        + eapply ExecUnit.read_step_wf; eauto.
+          rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
       - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
         econs; ss.
         + inv STEP. inv WRITABLE.
-          apply rmap_add_wf; viewtac.
-          rewrite TS. unfold ifc. condtac; [|by apply bot_spec]. eapply get_msg_wf. eauto.
-        + eapply fulfill_step_wf; eauto.
-          rewrite <- TS1. eapply expr_wf; eauto.
+          apply ExecUnit.rmap_add_wf; viewtac.
+          rewrite TS. apply bot_spec.
+        + eapply ExecUnit.fulfill_step_wf; eauto.
+          rewrite <- TS1. eapply ExecUnit.expr_wf; eauto.
       - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
         econs; ss.
         + inv STEP_FULFILL. inv WRITABLE.
-          apply rmap_add_wf; viewtac.
+          apply ExecUnit.rmap_add_wf; viewtac.
           * inv STEP_PROMISE. inv MEM2.
-            eapply rmap_append_wf; eauto.
-          * rewrite TS. unfold ifc. condtac; [|by apply bot_spec]. eapply get_msg_wf. eauto.
-        + eapply fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+            eapply ExecUnit.rmap_append_wf; eauto.
+          * rewrite TS. apply bot_spec.
+        + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
           { inv STEP_PROMISE. inv MEM2.
             rewrite List.app_length; s.
-            rewrite <- TS1. erewrite expr_wf; eauto. nia.
+            rewrite <- TS1. erewrite ExecUnit.expr_wf; eauto. nia.
           }
-          eapply promise_wf; try exact PROMISE; eauto.
-      - inv STEP. econs; ss. apply rmap_add_wf; viewtac.
-        inv RES. inv VIEW. rewrite TS. s. apply bot_spec.
+          eapply ExecUnit.promise_wf; try exact PROMISE; eauto.
+      - inv STEP. econs; ss.
       - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
         econs; ss.
         + inv STEP_READ. ss. subst.
           exploit FWDVIEW; eauto.
-          { eapply read_wf. eauto. }
-          i. apply rmap_add_wf; viewtac.
+          { eapply ExecUnit.read_wf. eauto. }
+          i. apply ExecUnit.rmap_add_wf; viewtac.
           rewrite TS0, <- TS. viewtac.
-          eauto using expr_wf.
-        + eapply fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
-          { rewrite <- TS. eapply expr_wf; eauto. }
-          eapply read_step_wf; eauto.
-          rewrite <- TS. eapply expr_wf; eauto.
+          eauto using ExecUnit.expr_wf.
+        + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+          { rewrite <- TS. eapply ExecUnit.expr_wf; eauto. }
+          eapply ExecUnit.read_step_wf; eauto.
+          rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
       - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
         econs; ss.
         + inv STEP_READ. ss. subst.
           exploit FWDVIEW; eauto.
-          { eapply read_wf. eauto. }
+          { eapply ExecUnit.read_wf. eauto. }
           i. inv STEP_PROMISE. inv MEM2.
-          apply rmap_add_wf; viewtac.
-          * eapply rmap_append_wf; eauto.
+          apply ExecUnit.rmap_add_wf; viewtac.
+          * eapply ExecUnit.rmap_append_wf; eauto.
           * rewrite TS0, <- TS.
             rewrite List.app_length. s.
             etrans; [|eapply Nat.le_add_r].
-            viewtac. erewrite expr_wf; eauto.
-        + eapply fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+            viewtac. erewrite ExecUnit.expr_wf; eauto.
+        + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
           { inv STEP_PROMISE. inv MEM2.
             rewrite List.app_length; s.
-            rewrite <- TS. erewrite expr_wf; eauto. nia.
+            rewrite <- TS. erewrite ExecUnit.expr_wf; eauto. nia.
           }
-          eapply promise_wf; eauto.
-          eapply read_step_wf; eauto.
-          rewrite <- TS. eapply expr_wf; eauto.
+          eapply ExecUnit.promise_wf; eauto.
+          eapply ExecUnit.read_step_wf; eauto.
+          rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
       - inv STEP. econs; ss. econs; viewtac.
       - inv STEP. econs; ss. econs; viewtac.
       - inv LC. econs; ss. econs; viewtac.
-        inv CTRL. rewrite <- TS. eauto using expr_wf.
+        inv CTRL. rewrite <- TS. eauto using ExecUnit.expr_wf.
     Qed.
 
     Lemma state_step_wf tid eu1 eu2
@@ -355,7 +357,7 @@ Module PFRelExecUnit.
           (WF: wf tid eu1):
       wf tid eu2.
     Proof.
-      inv STEP. eapply ExecUnit.state_step0_wf; eauto. refl.
+      inv STEP. eapply RMWExecUnit.state_step0_wf; eauto. refl.
     Qed.
 
     Lemma rel_step_wf tid eu1 eu2
@@ -363,7 +365,7 @@ Module PFRelExecUnit.
           (WF: wf tid eu1):
       wf tid eu2.
     Proof.
-      inv STEP. eapply ExecUnit.state_step0_wf; eauto. refl.
+      inv STEP. eapply RMWExecUnit.state_step0_wf; eauto. refl.
     Qed.
 
     Lemma state_step0_promises_le
@@ -398,25 +400,22 @@ Module PFRelExecUnit.
     Proof.
       inv STEP. inv STEP0.
       econs. econs; eauto.
-      inv LOCAL; ss.
+      inv LOCAL.
       - econs 1; eauto.
       - econs 2; eauto.
-      - econs 3; eauto.
-        destruct ord; ss.
+      - econs 3; eauto. destruct ord; ss.
       - econs 5; eauto.
-      - econs 6; eauto.
-        destruct ordw; ss.
+      - econs 6; eauto. destruct ordw; ss.
       - econs 8; eauto.
-      - econs 9; eauto.
-        destruct rw, ww; ss.
+      - econs 9; eauto. destruct rw, ww; ss.
       - econs 10; eauto.
     Qed.
 
     Lemma fulfilled_dec ts eu1 eu2:
       fulfilled ts eu1 eu2 \/ ~ fulfilled ts eu1 eu2.
     Proof.
-      destruct (Promises.lookup ts eu1.(ExecUnit.local).(Local.promises)) eqn:LOOKUP1.
-      - destruct (Promises.lookup ts eu2.(ExecUnit.local).(Local.promises)) eqn:LOOKUP2.
+      destruct (Promises.lookup ts eu1.(local).(Local.promises)) eqn:LOOKUP1.
+      - destruct (Promises.lookup ts eu2.(local).(Local.promises)) eqn:LOOKUP2.
         + right. ii. inv H1.
           rewrite LOOKUP1, LOOKUP2 in *. ss.
         + left. econs; eauto. rewrite LOOKUP2. ss.
@@ -426,8 +425,8 @@ Module PFRelExecUnit.
 
     Lemma rtc_fulfilled_or
           tid eu1 eu2 eu3 ts
-          (STEPS1: rtc (ExecUnit.state_step tid) eu1 eu2)
-          (STEPS2: rtc (ExecUnit.state_step tid) eu2 eu3)
+          (STEPS1: rtc (RMWExecUnit.state_step tid) eu1 eu2)
+          (STEPS2: rtc (RMWExecUnit.state_step tid) eu2 eu3)
           (FULFILL: fulfilled ts eu1 eu3):
       fulfilled ts eu1 eu2 \/ fulfilled ts eu2 eu3.
     Proof.
@@ -435,7 +434,7 @@ Module PFRelExecUnit.
       induction STEPS1; i; auto.
       specialize (fulfilled_dec ts x y). i. des.
       { left.
-        hexploit ExecUnit.rtc_state_step_promises_le; try exact STEPS1. i.
+        hexploit RMWExecUnit.rtc_state_step_promises_le; try exact STEPS1. i.
         inv H2. econs; ss. ii.
         apply H3 in H2. ss.
       }
@@ -447,31 +446,31 @@ Module PFRelExecUnit.
       }
       i. des; auto. left.
       inv x1. econs; ss.
-      hexploit ExecUnit.state_step_promises_le; try exact H1. auto.
+      hexploit RMWExecUnit.state_step_promises_le; try exact H1. auto.
     Qed.
 
     Lemma or_rtc_fulfilled
           tid eu1 eu2 eu3 ts
-          (STEPS1: rtc (ExecUnit.state_step tid) eu1 eu2)
-          (STEPS2: rtc (ExecUnit.state_step tid) eu2 eu3)
+          (STEPS1: rtc (RMWExecUnit.state_step tid) eu1 eu2)
+          (STEPS2: rtc (RMWExecUnit.state_step tid) eu2 eu3)
           (FULFILL: fulfilled ts eu1 eu2 \/ fulfilled ts eu2 eu3):
       fulfilled ts eu1 eu3.
     Proof.
       des.
       - inv FULFILL. econs; ss. ii.
-        eapply ExecUnit.rtc_state_step_promises_le in H1; eauto.
+        eapply RMWExecUnit.rtc_state_step_promises_le in H1; eauto.
       - inv FULFILL. econs; ss.
-        eapply ExecUnit.rtc_state_step_promises_le in BEFORE; eauto.
+        eapply RMWExecUnit.rtc_state_step_promises_le in BEFORE; eauto.
     Qed.
 
     Lemma rtc_fulfilled_fulfill_step
           tid eu1 eu4 ts
-          (STEPS: rtc (ExecUnit.state_step tid) eu1 eu4)
+          (STEPS: rtc (RMWExecUnit.state_step tid) eu1 eu4)
           (FULFILL: fulfilled ts eu1 eu4):
       exists e eu2 eu3,
-        (<<STEPS1: rtc (ExecUnit.state_step tid) eu1 eu2>>) /\
+        (<<STEPS1: rtc (RMWExecUnit.state_step tid) eu1 eu2>>) /\
         (<<FULFILL: fulfill_step tid ts e eu2 eu3>>) /\
-        (<<STEPS2: rtc (ExecUnit.state_step tid) eu3 eu4>>).
+        (<<STEPS2: rtc (RMWExecUnit.state_step tid) eu3 eu4>>).
     Proof.
       induction STEPS.
       { inv FULFILL. ss. }
@@ -487,9 +486,9 @@ Module PFRelExecUnit.
 
     Lemma rtc_last_release
           tid eu1 eu4
-          (STEPS: rtc (ExecUnit.state_step tid) eu1 eu4):
+          (STEPS: rtc (RMWExecUnit.state_step tid) eu1 eu4):
       (exists eu2 eu3,
-          (<<STEPS: rtc (ExecUnit.state_step tid) eu1 eu2>>) /\
+          (<<STEPS: rtc (RMWExecUnit.state_step tid) eu1 eu2>>) /\
           (<<REL: rel_step tid eu2 eu3>>) /\
           (<<NON_REL_STEPS: rtc (non_rel_step tid) eu3 eu4>>)) \/
       (<<NON_REL_STEPS: rtc (non_rel_step tid) eu1 eu4>>).
@@ -567,9 +566,9 @@ End PFRelExecUnit.
 
 
 Module PFRelMachine.
-  Import Machine.
+  Import RMWMachine.
 
-  Variant exec (p:program) (m:t): Prop :=
+  Variant exec (p:rmw_program) (m:t): Prop :=
   | exec_intro
       (STEP: rtc (step PFRelExecUnit.step) (init p) m)
       (NOPROMISE: no_promise m)
@@ -584,12 +583,12 @@ Module PFRelMachine.
 
   Lemma rtc_promise_step_more_promises
         m1 m2
-        (STEPS: rtc (step ExecUnit.promise_step) m1 m2):
+        (STEPS: rtc (step RMWExecUnit.promise_step) m1 m2):
     IdMap.Forall2
       (fun tid sl1 sl2 =>
          PFRelExecUnit.more_promises
-           (ExecUnit.mk (fst sl1) (snd sl1) m1.(mem))
-           (ExecUnit.mk (fst sl2) (snd sl2) m2.(mem)))
+           (RMWExecUnit.mk (fst sl1) (snd sl1) m1.(mem))
+           (RMWExecUnit.mk (fst sl2) (snd sl2) m2.(mem)))
       m1.(tpool) m2.(tpool).
   Proof.
     induction STEPS; ii.
@@ -614,13 +613,13 @@ Module PFRelMachine.
     }
   Qed.
 
-  Variant pf_rel_until_eu (tid: Id.t) (n: nat) (eu1 eu2: ExecUnit.t (A:=unit)): Prop :=
+  Variant pf_rel_until_eu (tid: Id.t) (n: nat) (eu1 eu2: RMWExecUnit.t (A:=unit)): Prop :=
   | pf_re_until_eu_intro
       eu
       (STEPS1: rtc (PFRelExecUnit.state_step tid) eu1 eu)
-      (PROMISES: forall ts (LOOKUP: Promises.lookup ts eu.(ExecUnit.local).(Local.promises)), ts > n)
-      (STEPS2: rtc (ExecUnit.state_step tid) eu eu2)
-      (MEMORY: eu1.(ExecUnit.mem) = eu2.(ExecUnit.mem))
+      (PROMISES: forall ts (LOOKUP: Promises.lookup ts eu.(RMWExecUnit.local).(Local.promises)), ts > n)
+      (STEPS2: rtc (RMWExecUnit.state_step tid) eu eu2)
+      (MEMORY: eu1.(RMWExecUnit.mem) = eu2.(RMWExecUnit.mem))
   .
   #[global]
    Hint Constructors pf_rel_until_eu: core.
@@ -630,13 +629,13 @@ Module PFRelMachine.
       m1 m2
       (PF_REL_STEPS: rtc (step PFRelExecUnit.step) m_init m1)
       (LENGTH: length m1.(mem) = n)
-      (PROMISES: rtc (step ExecUnit.promise_step) m1 m2)
+      (PROMISES: rtc (step RMWExecUnit.promise_step) m1 m2)
       (STATE_EXEC: IdMap.Forall2
                      (fun tid sl1 sl2 =>
                         pf_rel_until_eu
                           tid n
-                          (ExecUnit.mk (fst sl1) (snd sl1) m2.(mem))
-                          (ExecUnit.mk (fst sl2) (snd sl2) m2.(mem)))
+                          (RMWExecUnit.mk (fst sl1) (snd sl1) m2.(mem))
+                          (RMWExecUnit.mk (fst sl2) (snd sl2) m2.(mem)))
                      m2.(tpool) m_final.(tpool))
       (MEMORY: m2.(mem) = m_final.(mem))
       (NOPROMISE: no_promise m_final)
@@ -646,8 +645,8 @@ Module PFRelMachine.
 
   Lemma pf_exec_pf_rel_until
         p m
-        (PF_EXEC: Machine.pf_exec p m):
-    pf_rel_until 0 (Machine.init p) m.
+        (PF_EXEC: RMWMachine.pf_exec p m):
+    pf_rel_until 0 (RMWMachine.init p) m.
   Proof.
     inv PF_EXEC. econs.
     - refl.
@@ -683,7 +682,7 @@ Module PFRelMachine.
 
   Lemma pf_rel_until_pf_rel_exec
         n p m
-        (UNTIL: pf_rel_until n (Machine.init p) m)
+        (UNTIL: pf_rel_until n (RMWMachine.init p) m)
         (LENGTH: length m.(mem) <= n):
     PFRelMachine.exec p m.
   Proof.
@@ -694,7 +693,7 @@ End PFRelMachine.
 
 Lemma promising_to_pf_release
       p m
-      (EXEC: Machine.pf_exec p m):
+      (EXEC: RMWMachine.pf_exec p m):
   PFRelMachine.exec p m.
 Proof.
 Admitted.
