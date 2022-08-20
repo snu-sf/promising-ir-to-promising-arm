@@ -67,18 +67,18 @@ Section SIM_EU.
   Definition SIM_EU: Type := ExecUnit.t (A:=unit) -> ExecUnit.t (A:=unit) -> Prop.
 
   Definition _sim_eu (sim_eu: SIM_EU) (eu1_src eu1_tgt: ExecUnit.t (A:=unit)): Prop :=
-      (<<TERMINAL: 
-        forall (TERMINAL_TGT: ExecUnit.is_terminal eu1_tgt),
-        exists eu2_src,
-          (<<STEPS_SRC: rtc (ExecUnit.state_step tid) eu1_src eu2_src>>) /\
-          (<<TERMINAL_SRC: ExecUnit.is_terminal eu2_src>>) /\
-          (<<MEMORY2: ExecUnit.mem eu2_src = ExecUnit.mem eu1_tgt>>)>>) /\
-      (<<STEP:
-        forall eu2_tgt
-          (STEP_TGT: ExecUnit.state_step tid eu1_tgt eu2_tgt),
-        exists eu2_src,
-          (<<STEP_SRC: rtc (ExecUnit.state_step tid) eu1_src eu2_src>>) /\
-          (<<SIM: sim_eu eu2_src eu2_tgt>>)>>)
+    (<<TERMINAL:
+      forall (TERMINAL_TGT: ExecUnit.is_terminal eu1_tgt),
+      exists eu2_src,
+        (<<STEPS_SRC: rtc (ExecUnit.state_step tid) eu1_src eu2_src>>) /\
+        (<<TERMINAL_SRC: ExecUnit.is_terminal eu2_src>>) /\
+        (<<MEMORY2: ExecUnit.mem eu2_src = ExecUnit.mem eu1_tgt>>)>>) /\
+    (<<STEP:
+      forall eu2_tgt
+        (STEP_TGT: ExecUnit.state_step tid eu1_tgt eu2_tgt),
+      exists eu2_src,
+        (<<STEP_SRC: rtc (ExecUnit.state_step tid) eu1_src eu2_src>>) /\
+        (<<SIM: sim_eu eu2_src eu2_tgt>>)>>)
   .
   #[local] Hint Unfold _sim_eu: paco.
 
