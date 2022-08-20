@@ -1194,8 +1194,8 @@ Section Local.
   Proof.
     destruct (Promises.lookup ts (Local.promises lc)) eqn:X; ss.
     inv WF. exploit PROMISES; eauto. clear -ABOVE. lia.
-
   Qed.
+
   Inductive le (lhs rhs:t): Prop :=
   | le_intro
       (COH: forall loc, Order.le (lhs.(coh) loc).(View.ts) (rhs.(coh) loc).(View.ts))
