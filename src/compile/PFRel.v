@@ -190,6 +190,46 @@ Module PFRelLocal.
     Proof.
       inv MORE. econs; eauto using promises_eq_until_decr.
     Qed.
+
+    Lemma promise_promises_sound
+          loc val ts tid lc1 mem1 lc2 mem2
+          (STEP: promise (A:=A) loc val ts tid lc1 mem1 lc2 mem2)
+          (SOUND: promises_sound tid (promises lc1) mem1):
+      promises_sound tid (promises lc2) mem2.
+    Proof.
+      inv STEP. inv MEM2. ss.
+      ii. revert LOOKUP. erewrite Promises.set_o. condtac; i.
+      - inversion e. subst.
+        unfold Memory.get_msg. ss.
+        rewrite nth_error_app2; try refl.
+        rewrite minus_diag. ss. eauto.
+      - exploit SOUND; eauto. i. des.
+        esplits; eauto.
+        eapply Memory.get_msg_mon; eauto.
+    Qed.
+
+    Lemma step_promises_sound
+          e tid lc1 mem1 lc2 mem2
+          (STEP: step e tid lc1 mem1 lc2 mem2)
+          (SOUND: promises_sound tid (promises lc1) mem1):
+      promises_sound tid (promises lc2) mem2.
+    Proof.
+      inv STEP; eauto; try by (inv STEP0; ss; eauto).
+      - inv STEP0; ss.
+        eapply le_promises_sound; eauto.
+        eapply Promises.unset_le.
+      - inv STEP_FULFILL; ss.
+        eapply le_promises_sound; try eapply Promises.unset_le.
+        eapply promise_promises_sound; eauto.
+      - inv STEP_FULFILL; ss.
+        eapply le_promises_sound; try eapply Promises.unset_le.
+        inv STEP_READ. ss.
+      - inv STEP_FULFILL; ss.
+        eapply le_promises_sound; try eapply Promises.unset_le.
+        eapply promise_promises_sound; try exact STEP_PROMISE.
+        inv STEP_READ. ss.
+      - inv LC. ss.
+    Qed.
   End PFRelLocal.
 End PFRelLocal.
 
@@ -423,30 +463,16 @@ Module PFRelExecUnit.
         rewrite LOOKUP1 in *. ss.
     Qed.
 
-    Lemma rtc_fulfilled_or
-          tid eu1 eu2 eu3 ts
-          (STEPS1: rtc (RMWExecUnit.state_step tid) eu1 eu2)
-          (STEPS2: rtc (RMWExecUnit.state_step tid) eu2 eu3)
-          (FULFILL: fulfilled ts eu1 eu3):
-      fulfilled ts eu1 eu2 \/ fulfilled ts eu2 eu3.
+    Lemma fulfilled_or
+          eu
+          ts eu1 eu2
+          (FULFILL: fulfilled ts eu1 eu2):
+      fulfilled ts eu1 eu \/ fulfilled ts eu eu2.
     Proof.
-      revert eu3 STEPS2 FULFILL.
-      induction STEPS1; i; auto.
-      specialize (fulfilled_dec ts x y). i. des.
-      { left.
-        hexploit RMWExecUnit.rtc_state_step_promises_le; try exact STEPS1. i.
-        inv H2. econs; ss. ii.
-        apply H3 in H2. ss.
-      }
-      exploit IHSTEPS1; eauto.
-      { inv FULFILL. econs; ss.
-        destruct (Promises.lookup ts y.(local).(Local.promises)) eqn:LOOKUP; ss.
-        exfalso. apply H2. econs; ss.
-        rewrite LOOKUP. ss.
-      }
-      i. des; auto. left.
-      inv x1. econs; ss.
-      hexploit RMWExecUnit.state_step_promises_le; try exact H1. auto.
+      inv FULFILL.
+      destruct (Promises.lookup ts (Local.promises (local eu))) eqn:PRM.
+      - right. econs; eauto.
+      - left. econs; eauto. rewrite PRM. ss.
     Qed.
 
     Lemma or_rtc_fulfilled
@@ -474,10 +500,7 @@ Module PFRelExecUnit.
     Proof.
       induction STEPS.
       { inv FULFILL. ss. }
-      exploit rtc_fulfilled_or; try exact FULFILL.
-      { econs 2; try refl. eauto. }
-      { ss. }
-      i. des; cycle 1.
+      exploit (fulfilled_or y); try exact FULFILL. i. des; cycle 1.
       { exploit IHSTEPS; eauto. i. des.
         esplits; try exact FULFILL0; eauto.
       }
@@ -521,6 +544,15 @@ Module PFRelExecUnit.
       - rewrite MEMORY0, MEMORY.
         rewrite <- app_assoc.
         esplits; eauto.
+    Qed.
+
+    Lemma more_promises_lookup
+          eu1 eu2 ts
+          (MORE: more_promises eu1 eu2)
+          (LOOKUP1: Promises.lookup ts (Local.promises (local eu1)) = true):
+      Promises.lookup ts (Local.promises (local eu2)) = true.
+    Proof.
+      inv MORE. inv LOCAL. apply PROMISES_LE. ss.
     Qed.
 
     Lemma promise_step_more_promises
@@ -654,7 +686,7 @@ Module PFRelMachine.
     - eauto.
     - inv STEP2. ii.
       specialize (TPOOL id). inv TPOOL; eauto.
-      econs. econs; eauto. ss.
+      econs. econs; eauto. s.
       hexploit rtc_promise_step_more_promises; eauto. i.
       specialize (H1 id).
       rewrite <- H0 in *. inv H1.
@@ -667,6 +699,25 @@ Module PFRelMachine.
     - ss.
   Qed.
 
+  Lemma promise_step_inv
+        tid (eu1 eu2: RMWExecUnit.t (A:=unit))
+        (STEP: RMWExecUnit.promise_step tid eu1 eu2):
+    (<<PROMISE: Promises.lookup
+                  (S (length (RMWExecUnit.mem eu1)))
+                  (Local.promises (RMWExecUnit.local eu2)) = true>>) /\
+    (<<MEM: exists loc val,
+        Memory.get_msg (S (length (RMWExecUnit.mem eu1))) (RMWExecUnit.mem eu2) =
+        Some (Msg.mk loc val tid)>>).
+  Proof.
+    destruct eu1, eu2. ss.
+    inv STEP. inv LOCAL. inv MEM2. ss. subst. ss.
+    splits.
+    - erewrite Promises.set_o. condtac; ss. congr.
+    - unfold Memory.get_msg. ss.
+      rewrite nth_error_app2; try nia.
+      rewrite Nat.sub_diag. s. eauto.
+  Qed.
+
   Lemma pf_rel_until_step
         n m_init m_final
         (SOUND: promises_sound m_init)
@@ -677,7 +728,51 @@ Module PFRelMachine.
     inv UNTIL. inv PROMISES.
     { rewrite MEMORY in *. nia. }
     rename y into m. inv H.
-    dup STATE_EXEC.
+    exploit promise_step_inv; try exact STEP. s. i. des.
+    hexploit rtc_promise_step_more_promises; try exact H0. i.
+    specialize (H tid). revert H.
+    rewrite TPOOL. rewrite IdMap.add_spec. condtac; try congr. i. inv H.
+    destruct b as [st3 lc3]. ss.
+    eapply PFRelExecUnit.more_promises_lookup in REL; eauto. ss.
+    dup STATE_EXEC. specialize (STATE_EXEC0 tid).
+    rewrite <- H3 in *. inv STATE_EXEC0.
+    destruct b as [st4 lc4]. ss. inv REL0. ss.
+    exploit (PFRelExecUnit.fulfilled_or eu).
+    { instantiate (1:=RMWExecUnit.mk st4 lc4 (mem m2)).
+      instantiate (1:=RMWExecUnit.mk st3 lc3 (mem m2)).
+      instantiate (1:=S (length (mem m1))).
+      econs; ss.
+      inv NOPROMISE. exploit PROMISES0; eauto.
+      i. rewrite x0. ss.
+    }
+    i. des.
+    { (* fulfilled by PFRel steps *)
+      econs.
+      - etrans; [exact PF_REL_STEPS|]. econs 2; try refl.
+        econs; eauto. econs 2. ss.
+      - inv STEP. inv LOCAL. inv MEM2. ss.
+        rewrite app_length. s.
+        rewrite plus_comm. refl.
+      - eauto.
+      - ii. destruct (Id.eq_dec id tid).
+        { subst. rewrite <- H3, <- H. econs. s. econs; eauto. i.
+          exploit PROMISES; eauto. i.
+          destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia.
+          subst. inv x0. ss.
+        }
+        { specialize (STATE_EXEC id).
+          inv STATE_EXEC; econs.
+          inv REL0. ss. econs; eauto. i.
+          exploit PROMISES0; eauto. i.
+          destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia.
+          subst.
+          admit.
+        }
+      - ss.
+      - ss.
+    }
+
+    (* fulfilled after PFRel steps *)
   Admitted.
 
   Lemma pf_rel_until_pf_rel_exec
