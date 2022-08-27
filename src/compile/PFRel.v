@@ -53,21 +53,6 @@ Proof.
   ii. rewrite EQ; ss. nia.
 Qed.
 
-Definition promises_sound (tid: Id.t) (prm: Promises.t) (mem: Memory.t): Prop :=
-  forall ts (LOOKUP: Promises.lookup ts prm),
-  exists msg,
-    (<<GET: Memory.get_msg ts mem = Some msg>>) /\
-    (<<TID: msg.(Msg.tid) = tid>>).
-
-Lemma le_promises_sound
-      tid prm1 prm2 mem
-      (SOUND: promises_sound tid prm1 mem)
-      (LE: Promises.le prm2 prm1):
-  promises_sound tid prm2 mem.
-Proof.
-  ii. eauto.
-Qed.
-
 Definition is_release {A} `{_: orderC A} (e: RMWEvent.t (A:=A)): bool :=
   match e with
   | RMWEvent.write ordw _ _ _
@@ -142,6 +127,33 @@ Module PFRelLocal.
     #[local]
      Hint Constructors step: core.
 
+    Lemma promise_memory_incr
+          loc val ts tid lc1 mem1 lc2 mem2
+          (PROMISE: promise (A:=A) loc val ts tid lc1 mem1 lc2 mem2):
+      mem2 = mem1 ++ [Msg.mk loc val tid].
+    Proof.
+      inv PROMISE. inv MEM2. ss.
+    Qed.
+
+    Lemma step_incr
+          e tid lc1 mem1 lc2 mem2
+          (LC: step e tid lc1 mem1 lc2 mem2):
+      le lc1 lc2 /\ exists mem', mem2 = mem1 ++ mem'.
+    Proof.
+      inv LC; split; try refl;
+        eauto using app_nil_r, promise_memory_incr.
+      - eauto using read_incr.
+      - eauto using fulfill_incr.
+      - etrans; eauto using promise_incr, fulfill_incr.
+      - eauto using write_failure_incr.
+      - etrans; eauto using read_incr, fulfill_incr.
+      - etrans; eauto using read_incr.
+        etrans; eauto using promise_incr, fulfill_incr.
+      - eauto using isb_incr.
+      - eauto using dmb_incr.
+      - eauto using control_incr.
+    Qed.
+
     Lemma step_promises_le
           e tid lc1 mem1 lc2 mem2
           (STEP: step e tid lc1 mem1 lc2 mem2):
@@ -194,8 +206,8 @@ Module PFRelLocal.
     Lemma promise_promises_sound
           loc val ts tid lc1 mem1 lc2 mem2
           (STEP: promise (A:=A) loc val ts tid lc1 mem1 lc2 mem2)
-          (SOUND: promises_sound tid (promises lc1) mem1):
-      promises_sound tid (promises lc2) mem2.
+          (SOUND: Promises.sound tid (promises lc1) mem1):
+      Promises.sound tid (promises lc2) mem2.
     Proof.
       inv STEP. inv MEM2. ss.
       ii. revert LOOKUP. erewrite Promises.set_o. condtac; i.
@@ -211,21 +223,21 @@ Module PFRelLocal.
     Lemma step_promises_sound
           e tid lc1 mem1 lc2 mem2
           (STEP: step e tid lc1 mem1 lc2 mem2)
-          (SOUND: promises_sound tid (promises lc1) mem1):
-      promises_sound tid (promises lc2) mem2.
+          (SOUND: Promises.sound tid (promises lc1) mem1):
+      Promises.sound tid (promises lc2) mem2.
     Proof.
       inv STEP; eauto; try by (inv STEP0; ss; eauto).
       - inv STEP0; ss.
-        eapply le_promises_sound; eauto.
+        eapply Promises.le_sound; eauto.
         eapply Promises.unset_le.
       - inv STEP_FULFILL; ss.
-        eapply le_promises_sound; try eapply Promises.unset_le.
+        eapply Promises.le_sound; try eapply Promises.unset_le.
         eapply promise_promises_sound; eauto.
       - inv STEP_FULFILL; ss.
-        eapply le_promises_sound; try eapply Promises.unset_le.
+        eapply Promises.le_sound; try eapply Promises.unset_le.
         inv STEP_READ. ss.
       - inv STEP_FULFILL; ss.
-        eapply le_promises_sound; try eapply Promises.unset_le.
+        eapply Promises.le_sound; try eapply Promises.unset_le.
         eapply promise_promises_sound; try exact STEP_PROMISE.
         inv STEP_READ. ss.
       - inv LC. ss.
@@ -392,6 +404,14 @@ Module PFRelExecUnit.
       inv STEP. eapply state_step0_wf; eauto. refl.
     Qed.
 
+    Lemma step_wf tid eu1 eu2
+          (STEP: step tid eu1 eu2)
+          (WF: wf tid eu1):
+      wf tid eu2.
+    Proof.
+      inv STEP; eauto using state_step_wf, promise_step_wf.
+    Qed.
+
     Lemma non_rel_step_wf tid eu1 eu2
           (STEP: non_rel_step tid eu1 eu2)
           (WF: wf tid eu1):
@@ -406,6 +426,57 @@ Module PFRelExecUnit.
       wf tid eu2.
     Proof.
       inv STEP. eapply RMWExecUnit.state_step0_wf; eauto. refl.
+    Qed.
+
+    Lemma state_step0_incr
+          tid e1 e2 eu1 eu2
+          (STEP: state_step0 tid e1 e2 eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      inv STEP.
+      exploit PFRelLocal.step_incr; eauto. i. des.
+      econs; eauto.
+    Qed.
+
+    Lemma state_step_incr
+          tid eu1 eu2
+          (STEP: state_step tid eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      inv STEP. eauto using state_step0_incr.
+    Qed.
+
+    Lemma rtc_state_step_incr
+          tid eu1 eu2
+          (STEPS: rtc (state_step tid) eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      induction STEPS; try refl.
+      etrans; eauto using state_step_incr.
+    Qed.
+
+    Lemma step_incr
+          tid eu1 eu2
+          (STEP: step tid eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      inv STEP; eauto using state_step_incr, promise_step_incr.
+    Qed.
+
+    Lemma non_rel_step_incr
+          tid eu1 eu2
+          (STEP: non_rel_step tid eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      inv STEP. eauto using RMWExecUnit.state_step0_incr.
+    Qed.
+
+    Lemma rel_step_incr
+          tid eu1 eu2
+          (STEP: rel_step tid eu1 eu2):
+      le eu1 eu2.
+    Proof.
+      inv STEP. eauto using RMWExecUnit.state_step0_incr.
     Qed.
 
     Lemma state_step0_promises_le
@@ -431,6 +502,52 @@ Module PFRelExecUnit.
     Proof.
       induction STEPS; ss.
       etrans; eauto using state_step_promises_le.
+    Qed.
+
+    Lemma state_step0_promises_sound
+          tid e1 e2 eu1 eu2
+          (SOUND: Promises.sound tid (Local.promises (local eu1)) (mem eu1))
+          (STEP: state_step0 tid e1 e2 eu1 eu2):
+      Promises.sound tid (Local.promises (local eu2)) (mem eu2).
+    Proof.
+      inv STEP. eauto using PFRelLocal.step_promises_sound.
+    Qed.
+
+    Lemma state_step_promises_sound
+          tid eu1 eu2
+          (SOUND: Promises.sound tid (Local.promises (local eu1)) (mem eu1))
+          (STEP: state_step tid eu1 eu2):
+      Promises.sound tid (Local.promises (local eu2)) (mem eu2).
+    Proof.
+      inv STEP. eauto using state_step0_promises_sound.
+    Qed.
+
+    Lemma rtc_state_step_promises_sound
+          tid eu1 eu2
+          (SOUND: Promises.sound tid (Local.promises (local eu1)) (mem eu1))
+          (STEP: rtc (state_step tid) eu1 eu2):
+      Promises.sound tid (Local.promises (local eu2)) (mem eu2).
+    Proof.
+      induction STEP; ss.
+      apply IHSTEP. eauto using state_step_promises_sound.
+    Qed.
+
+    Lemma promise_step_promises_sound
+          tid eu1 eu2
+          (SOUND: Promises.sound tid (Local.promises (local eu1)) (mem eu1))
+          (STEP: promise_step tid eu1 eu2):
+      Promises.sound tid (Local.promises (local eu2)) (mem eu2).
+    Proof.
+      inv STEP. eauto using PFRelLocal.promise_promises_sound.
+    Qed.
+
+    Lemma step_promises_sound
+          tid eu1 eu2
+          (SOUND: Promises.sound tid (Local.promises (local eu1)) (mem eu1))
+          (STEP: step tid eu1 eu2):
+      Promises.sound tid (Local.promises (local eu2)) (mem eu2).
+    Proof.
+      inv STEP; eauto using state_step_promises_sound, promise_step_promises_sound.
     Qed.
 
     Lemma non_rel_step_state_step
@@ -611,7 +728,160 @@ Module PFRelMachine.
   Definition promises_sound (m:t): Prop :=
     forall tid st lc
       (FIND: IdMap.find tid m.(tpool) = Some (st, lc)),
-      promises_sound tid (Local.promises lc) m.(mem).
+      Promises.sound tid (Local.promises lc) m.(mem).
+
+  Lemma state_step_incr
+        m1 m2
+        (STEP: step PFRelExecUnit.state_step m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    inv STEP.
+    exploit (PFRelExecUnit.state_step_incr (A:=unit)); eauto. i.
+    inv x0. eauto.
+  Qed.
+
+  Lemma promise_step_incr
+        m1 m2
+        (STEP: step RMWExecUnit.promise_step m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    inv STEP.
+    exploit (RMWExecUnit.promise_step_incr (A:=unit)); eauto. i.
+    inv x0. eauto.
+  Qed.
+
+  Lemma step_incr
+        m1 m2
+        (STEP: step PFRelExecUnit.step m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    inv STEP.
+    exploit (PFRelExecUnit.step_incr (A:=unit)); eauto. i.
+    inv x0. eauto.
+  Qed.
+
+  Lemma rtc_state_step_incr
+        m1 m2
+        (STEP: rtc (step PFRelExecUnit.state_step) m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    induction STEP.
+    - esplits. rewrite app_nil_r. ss.
+    - exploit state_step_incr; eauto. i. des.
+      rewrite IHSTEP, x1.
+      rewrite <- app_assoc. eauto.
+  Qed.
+
+  Lemma rtc_promise_step_incr
+        m1 m2
+        (STEP: rtc (step RMWExecUnit.promise_step) m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    induction STEP.
+    - esplits. rewrite app_nil_r. ss.
+    - exploit promise_step_incr; eauto. i. des.
+      rewrite IHSTEP, x1.
+      rewrite <- app_assoc. eauto.
+  Qed.
+
+  Lemma rtc_step_incr
+        m1 m2
+        (STEP: rtc (step PFRelExecUnit.step) m1 m2):
+    exists mem', mem m2 = mem m1 ++ mem'.
+  Proof.
+    induction STEP.
+    - esplits. rewrite app_nil_r. ss.
+    - exploit step_incr; eauto. i. des.
+      rewrite IHSTEP, x1.
+      rewrite <- app_assoc. eauto.
+  Qed.
+
+  Lemma state_step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: step PFRelExecUnit.state_step m1 m2):
+    promises_sound m2.
+  Proof.
+    inv STEP.
+    apply SOUND in FIND.
+    hexploit (PFRelExecUnit.state_step_promises_sound (A:=unit)); try exact STEP0; ss. i.
+    ii. revert FIND0. rewrite TPOOL.
+    rewrite IdMap.add_spec. condtac.
+    - inversion e. subst. i. inv FIND0. eauto.
+    - i. apply SOUND in FIND0.
+      exploit (PFRelExecUnit.state_step_incr (A:=unit)); eauto. i.
+      exploit FIND0; eauto. i. des.
+      inv x0. ss. rewrite MEM.
+      esplits; eauto.
+      eapply Memory.get_msg_mon; eauto.
+  Qed.
+
+  Lemma promise_step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: step RMWExecUnit.promise_step m1 m2):
+    promises_sound m2.
+  Proof.
+    inv STEP.
+    apply SOUND in FIND.
+    hexploit (PFRelExecUnit.promise_step_promises_sound (A:=unit)); try exact STEP0; ss. i.
+    ii. revert FIND0. rewrite TPOOL.
+    rewrite IdMap.add_spec. condtac.
+    - inversion e. subst. i. inv FIND0. eauto.
+    - i. apply SOUND in FIND0.
+      exploit (RMWExecUnit.promise_step_incr (A:=unit)); eauto. i.
+      exploit FIND0; eauto. i. des.
+      inv x0. ss. rewrite MEM.
+      esplits; eauto.
+      eapply Memory.get_msg_mon; eauto.
+  Qed.
+
+  Lemma step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: step PFRelExecUnit.step m1 m2):
+    promises_sound m2.
+  Proof.
+    inv STEP.
+    apply SOUND in FIND.
+    hexploit (PFRelExecUnit.step_promises_sound (A:=unit)); try exact STEP0; ss. i.
+    ii. revert FIND0. rewrite TPOOL.
+    rewrite IdMap.add_spec. condtac.
+    - inversion e. subst. i. inv FIND0. eauto.
+    - i. apply SOUND in FIND0.
+      exploit (PFRelExecUnit.step_incr (A:=unit)); eauto. i.
+      exploit FIND0; eauto. i. des.
+      inv x0. ss. rewrite MEM.
+      esplits; eauto.
+      eapply Memory.get_msg_mon; eauto.
+  Qed.
+
+  Lemma rtc_state_step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: rtc (step PFRelExecUnit.state_step) m1 m2):
+    promises_sound m2.
+  Proof.
+    induction STEP; eauto using state_step_promises_sound.
+  Qed.
+
+  Lemma rtc_promise_step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: rtc (step RMWExecUnit.promise_step) m1 m2):
+    promises_sound m2.
+  Proof.
+    induction STEP; eauto using promise_step_promises_sound.
+  Qed.
+
+  Lemma rtc_step_promises_sound
+        m1 m2
+        (SOUND: promises_sound m1)
+        (STEP: rtc (step PFRelExecUnit.step) m1 m2):
+    promises_sound m2.
+  Proof.
+    induction STEP; eauto using step_promises_sound.
+  Qed.
 
   Lemma rtc_promise_step_more_promises
         m1 m2
@@ -651,7 +921,6 @@ Module PFRelMachine.
       (STEPS1: rtc (PFRelExecUnit.state_step tid) eu1 eu)
       (PROMISES: forall ts (LOOKUP: Promises.lookup ts eu.(RMWExecUnit.local).(Local.promises)), ts > n)
       (STEPS2: rtc (RMWExecUnit.state_step tid) eu eu2)
-      (MEMORY: eu1.(RMWExecUnit.mem) = eu2.(RMWExecUnit.mem))
   .
   #[global]
    Hint Constructors pf_rel_until_eu: core.
@@ -725,13 +994,17 @@ Module PFRelMachine.
         (UNTIL: pf_rel_until n m_init m_final):
     pf_rel_until (S n) m_init m_final.
   Proof.
-    inv UNTIL. inv PROMISES.
+    inv UNTIL.
+    hexploit rtc_step_promises_sound; try exact PF_REL_STEPS; eauto. intro SOUND1.
+    hexploit rtc_promise_step_promises_sound; try exact PROMISES; eauto. intro SOUND2.
+    inv PROMISES.
     { rewrite MEMORY in *. nia. }
     rename y into m. inv H.
     exploit promise_step_inv; try exact STEP. s. i. des.
     hexploit rtc_promise_step_more_promises; try exact H0. i.
     specialize (H tid). revert H.
-    rewrite TPOOL. rewrite IdMap.add_spec. condtac; try congr. i. inv H.
+    rewrite TPOOL. rewrite IdMap.add_spec. condtac; try congr.
+    i. inv H. clear e X.
     destruct b as [st3 lc3]. ss.
     eapply PFRelExecUnit.more_promises_lookup in REL; eauto. ss.
     dup STATE_EXEC. specialize (STATE_EXEC0 tid).
@@ -762,11 +1035,17 @@ Module PFRelMachine.
         }
         { specialize (STATE_EXEC id).
           inv STATE_EXEC; econs.
-          inv REL0. ss. econs; eauto. i.
+          destruct a as [st'1 lc'1], b as [st'2 lc'2]. ss.
+          inv REL0. econs; eauto. i.
           exploit PROMISES0; eauto. i.
-          destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia.
-          subst.
-          admit.
+          destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia. subst.
+          exploit (PFRelExecUnit.rtc_state_step_promises_sound (A:=unit));
+            try exact STEPS0; s; eauto.
+          i. des.
+          exploit rtc_promise_step_incr; try exact H0. i. des.
+          exploit (PFRelExecUnit.rtc_state_step_incr (A:=unit)); try exact STEPS0. i. inv x3. ss.
+          revert GET. rewrite MEM0, x2. rewrite <- app_assoc.
+          erewrite Memory.get_msg_mon; eauto. i. inv GET. ss.
         }
       - ss.
       - ss.

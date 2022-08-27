@@ -815,6 +815,21 @@ Module Promises.
     ii. revert H.
     rewrite unset_o, set_o. condtac; ss.
   Qed.
+
+  Definition sound (tid: Id.t) (prm: Promises.t) (mem: Memory.t): Prop :=
+    forall ts (LOOKUP: lookup ts prm),
+    exists msg,
+      (<<GET: Memory.get_msg ts mem = Some msg>>) /\
+      (<<TID: msg.(Msg.tid) = tid>>).
+
+  Lemma le_sound
+        tid prm1 prm2 mem
+        (SOUND: sound tid prm1 mem)
+        (LE: le prm2 prm1):
+    sound tid prm2 mem.
+  Proof.
+    ii. eauto.
+  Qed.
 End Promises.
 
 Module Local.

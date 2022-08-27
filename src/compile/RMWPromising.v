@@ -304,6 +304,16 @@ Section RMWExecUnit.
     rewrite MEM, app_assoc. eauto.
   Qed.
 
+  Lemma state_step0_incr
+        tid e1 e2 eu1 eu2
+        (STEP: state_step0 tid e1 e2 eu1 eu2):
+    le eu1 eu2.
+  Proof.
+    inv STEP. econs.
+    - eauto using RMWLocal.step_incr.
+    - rewrite app_nil_r. ss.
+  Qed.
+
   Lemma state_step_incr tid eu1 eu2
         (STEP: state_step tid eu1 eu2):
     le eu1 eu2.
