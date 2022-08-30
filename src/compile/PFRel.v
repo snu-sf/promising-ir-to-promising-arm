@@ -568,6 +568,16 @@ Module PFRelExecUnit.
       - econs 10; eauto.
     Qed.
 
+    Lemma fulfill_step_state_step
+          tid ts e eu1 eu2
+          (STEP: fulfill_step tid ts e eu1 eu2)
+          (EVENT: ~ is_release e):
+      state_step tid eu1 eu2.
+    Proof.
+      apply non_rel_step_state_step.
+      inv STEP. econs; eauto.
+    Qed.
+
     Lemma fulfilled_dec ts eu1 eu2:
       fulfilled ts eu1 eu2 \/ ~ fulfilled ts eu1 eu2.
     Proof.
@@ -649,8 +659,8 @@ Module PFRelExecUnit.
 
     Global Program Instance more_promises_PreOrder: PreOrder more_promises.
     Next Obligation.
-      ii. econs; ss; try refl.
-      exists []. rewrite List.app_nil_r. ss.
+      ii. econs; eauto; try refl.
+      esplits. rewrite app_nil_r. ss.
     Qed.
     Next Obligation.
       ii. inv H1. inv H2. des.
@@ -710,6 +720,28 @@ Module PFRelExecUnit.
         rewrite app_length. nia.
       - rewrite <- app_assoc. eauto.
     Qed.
+
+    Definition unreached (ts: Time.t) (eu: t): Prop :=
+      (<<UNREACHEDR: lt eu.(local).(Local.vro).(View.ts) ts>>) /\
+      (<<UNREACHEDW: lt eu.(local).(Local.vwo).(View.ts) ts>>).
+
+    Lemma more_promises_state_step
+          eu1 tid meu1 meu2
+          (MORE1: more_promises eu1 meu1)
+          (PROMISES1: forall ts (LOOKUP: Promises.lookup ts meu1.(local).(Local.promises)), ts > length (mem eu1))
+          (MSTEP: state_step tid meu1 meu2)
+          (UNREACHED: unreached (length (mem eu1)) meu2):
+      exists eu2,
+        (<<STEP: state_step tid eu1 eu2>>) /\
+        (<<MORE2: more_promises eu2 meu2>>) /\
+        (<<MEM: mem eu1 = mem eu2>>).
+    Proof.
+      destruct eu1 as [st1 lc1 mem1],
+          meu1 as [mst1 mlc1 mmem1],
+          meu2 as [mst2 mlc2 mmem2].
+      inv MORE1. ss. des. subst.
+      inv MSTEP. inv STEP. inv LOCAL0; ss; subst.
+    Admitted.
   End PFRelExecUnit.
 End PFRelExecUnit.
 
@@ -725,7 +757,7 @@ Module PFRelMachine.
   #[global]
    Hint Constructors exec: core.
 
-  Definition promises_sound (m:t): Prop :=
+  Definition promises_sound (m: t): Prop :=
     forall tid st lc
       (FIND: IdMap.find tid m.(tpool) = Some (st, lc)),
       Promises.sound tid (Local.promises lc) m.(mem).
@@ -1001,8 +1033,8 @@ Module PFRelMachine.
     { rewrite MEMORY in *. nia. }
     rename y into m. inv H.
     exploit promise_step_inv; try exact STEP. s. i. des.
-    hexploit rtc_promise_step_more_promises; try exact H0. i.
-    specialize (H tid). revert H.
+    hexploit rtc_promise_step_more_promises; try exact H0. intro MORE.
+    generalize (MORE tid).
     rewrite TPOOL. rewrite IdMap.add_spec. condtac; try congr.
     i. inv H. clear e X.
     destruct b as [st3 lc3]. ss.
@@ -1019,6 +1051,7 @@ Module PFRelMachine.
       i. rewrite x0. ss.
     }
     i. des.
+
     { (* fulfilled by PFRel steps *)
       econs.
       - etrans; [exact PF_REL_STEPS|]. econs 2; try refl.
@@ -1052,6 +1085,58 @@ Module PFRelMachine.
     }
 
     (* fulfilled after PFRel steps *)
+    exploit (PFRelExecUnit.rtc_fulfilled_fulfill_step (A:=unit)); try exact STEPS2; eauto.
+    clear STEPS2. i. des.
+    destruct (is_release e) eqn:EVENT.
+    { (* fulfilled by a release write *)
+      admit.
+    }
+
+    (* fulfilled by a non-release write *)
+    exploit (PFRelExecUnit.rtc_last_release (A:=unit)); try exact STEPS0.
+    clear STEPS0. i. des; cycle 1.
+    { (* no release step until the fulfillment *)
+      econs; [..|eauto|eauto].
+      { etrans; [eauto|].
+        econs 2; try refl. econs; eauto.
+        econs 2. ss.
+      }
+      { inv STEP. inv LOCAL. inv MEM2. ss.
+        rewrite app_length. s. nia.
+      }
+      { ss. }
+      ii. destruct (Id.eq_dec id tid).
+      { subst. rewrite <- H3, <- H. econs. s.
+        exploit rtc_mon; try eapply (PFRelExecUnit.non_rel_step_state_step (A:=unit));
+          try exact NON_REL_STEPS. i.
+        exploit (PFRelExecUnit.fulfill_step_state_step (A:=unit)); eauto; try congr. i.
+        econs.
+        - etrans; [eauto|]. etrans; [eauto|]. econs 2; eauto.
+        - hexploit (PFRelExecUnit.rtc_state_step_promises_le (A:=unit)).
+          { etrans; [exact x1|]. econs 2; eauto. }
+          i. exploit H1; eauto.
+          i. exploit PROMISES; eauto. i.
+          destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia. subst.
+          inv FULFILL. inv FULFILL0. congr.
+        - ss.
+      }
+      { specialize (STATE_EXEC id).
+        inv STATE_EXEC; econs.
+        destruct a as [st'1 lc'1], b as [st'2 lc'2]. ss.
+        inv REL0. econs; eauto. i.
+        exploit PROMISES0; eauto. i.
+        destruct (Nat.eq_dec ts (S (length (mem m1)))); try nia. subst.
+        exploit (PFRelExecUnit.rtc_state_step_promises_sound (A:=unit));
+          try exact STEPS0; s; eauto.
+        i. des.
+        exploit rtc_promise_step_incr; try exact H0. i. des.
+        exploit (PFRelExecUnit.rtc_state_step_incr (A:=unit)); try exact STEPS0. i. inv x3. ss.
+        revert GET. rewrite MEM0, x2. rewrite <- app_assoc.
+        erewrite Memory.get_msg_mon; eauto. i. inv GET. ss.
+      }
+    }
+
+    (* release step before the fulfillment *)
   Admitted.
 
   Lemma pf_rel_until_pf_rel_exec
