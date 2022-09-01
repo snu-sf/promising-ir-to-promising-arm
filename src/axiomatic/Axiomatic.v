@@ -61,6 +61,12 @@ Module Label.
     | _ => false
     end.
 
+  Definition is_srlx (label:t): bool :=
+    match label with
+    | write _ ord _ _ => OrdW.ge ord OrdW.srlx
+    | _ => false
+    end.
+
   Definition is_release_pc (label:t): bool :=
     match label with
     | write _ ord _ _ => OrdW.ge ord OrdW.release_pc
@@ -777,6 +783,7 @@ Module Execution.
   (* 	| [A | Q]; po; [R|W] *)
   (* 	| [W]; po; [dmb.st]; po; [W] *)
   (* 	| [R|W]; po; [L] *)
+  (*    | [R]; po; [S] *)
 
   (* let ob = obs | dob | aob | bob *)
 
@@ -903,6 +910,10 @@ Module Execution.
 
     (po ⨾
      ⦗ex.(label_is) Label.is_release_pc⦘) ∪
+
+    (⦗ex.(label_is) Label.is_read⦘ ⨾
+     po ⨾
+     ⦗ex.(label_is) Label.is_srlx⦘) ∪
 
     (ifc (arch == riscv) ex.(rmw)).
 
@@ -1464,7 +1475,7 @@ Module Valid.
       + eapply data_label in H1; eauto. des. inv EID2. destruct l; ss. congr.
       + inv H. exploit RF2; eauto. i. des. congr.
     - exploit RF2; eauto. i. des. congr.
-    - right. left. left. right. econs. splits; [by econs; eauto|]. etrans; eauto.
+    - right. left. left. left. right. econs. splits; [by econs; eauto|]. etrans; eauto.
     - revert H0. unfold ifc. condtac; ss. i. exploit rmw_spec; eauto. i. des.
       inv LABEL2. rewrite EID in EID0. inv EID0. des. ss.
   Qed.
@@ -1524,7 +1535,7 @@ Module Valid.
       + eapply data_label in H1; eauto. des. inv EID2. destruct l; ss. congr.
       + inv H. exploit RF2; eauto. i. des. congr.
     - exploit RF2; eauto. i. des. congr.
-    - right. left. left. right. econs. splits; [by econs; eauto|]. etrans; eauto.
+    - right. left. left. left. right. econs. splits; [by econs; eauto|]. etrans; eauto.
     - revert H0. unfold ifc. condtac; ss. i. exploit rmw_spec; eauto. i. des.
       inv LABEL2. rewrite EID in EID0. inv EID0. des. ss.
   Qed.
