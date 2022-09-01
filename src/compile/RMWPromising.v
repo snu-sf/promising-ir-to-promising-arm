@@ -10,7 +10,8 @@ Require Import ZArith.
 Require Import FMapPositive.
 Require Import FSetPositive.
 Require Import EquivDec.
-Require Import sflib.
+
+From sflib Require Import sflib.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.
