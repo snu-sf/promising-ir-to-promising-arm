@@ -872,14 +872,16 @@ Proof.
           - eapply sim_local_vwn_spec; eauto.
           - econs; eauto. apply Label.write_is_writing.
         }
-        { destruct (OrdW.ge ord OrdW.release_pc) eqn:ORD; s; cycle 1.
+        { destruct (OrdW.ge ord OrdW.srlx) eqn:ORD; s; cycle 1.
           { apply bot_spec. }
           generalize SIM_LOCAL.(VRO). intro X. inv X.
           { rewrite VIEW2. apply bot_spec. }
           rewrite VIEW2. inv EID.
           apply lt_n_Sm_le. eapply view_of_eid_ob_write; eauto.
           - inv REL. des. inv H.
-            right. left. right. econs. splits; eauto. econs; eauto.
+            right. left. right. econs. splits; eauto.
+            + econs; eauto.
+            + econs. splits; eauto. econs; eauto.
           - econs; eauto. apply Label.write_is_writing.
         }
         { destruct (OrdW.ge ord OrdW.release_pc) eqn:ORD; s; cycle 1.
@@ -889,7 +891,7 @@ Proof.
           rewrite VIEW2. inv EID.
           apply lt_n_Sm_le. eapply view_of_eid_ob_write; eauto.
           - inv REL. des. inv H.
-            right. left. right. econs. splits; eauto. econs; eauto.
+            right. left. left. right. econs. splits; eauto. econs; eauto.
           - econs; eauto. apply Label.write_is_writing.
         }
         { unfold ifc. condtac; cycle 1.

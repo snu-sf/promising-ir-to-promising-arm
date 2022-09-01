@@ -171,36 +171,36 @@ Proof.
     inv H4. exploit RF2; eauto. i. des. congr.
   - (* bob *)
     unfold Execution.bob in H. rewrite ? seq_assoc in *. des_union.
-    + inv H1. des. inv H1. inv H4. destruct l0; ss. congr.
+    + inv H. des. inv H2. inv H4. destruct l0; ss. congr.
     + eapply Nat.le_lt_trans; [apply L.(LC).(VWN)|]; ss; cycle 1.
       * rewrite fun_add_spec. condtac; [|congr].
         inv WRITABLE. ss. eapply Nat.le_lt_trans; [|exact EXT].
         rewrite <- join_r, <- join_r, <- join_r, <- join_l. ss.
       * econs; eauto. unfold sim_local_vwn. left. left.
-        rewrite ? seq_assoc. inv H1. des. inv H1. ss.
-    + inv H. des. inv H2. inv H4. destruct l0; ss. congr.
+        rewrite ? seq_assoc. inv H. des. inv H2. ss.
+    + inv H1. des. inv H1. inv H4. destruct l0; ss. congr.
     + eapply Nat.le_lt_trans; [apply L.(LC).(VWN)|]; ss; cycle 1.
       * rewrite fun_add_spec. condtac; [|congr].
         inv WRITABLE. ss. eapply Nat.le_lt_trans; [|exact EXT].
         rewrite <- join_r, <- join_r, <- join_r, <- join_l. ss.
       * econs; eauto. unfold sim_local_vwn. left. right.
-        rewrite ? seq_assoc. inv H1. des. inv H1. ss.
-    + inv H. des. inv H2. inv H4. destruct l0; ss. congr.
+        rewrite ? seq_assoc. inv H. des. inv H2. ss.
+    + inv H1. des. inv H1. inv H4. destruct l0; ss. congr.
     + eapply Nat.le_lt_trans; [apply L.(LC).(VWN)|]; ss; cycle 1.
       * rewrite fun_add_spec. condtac; [|congr].
         inv WRITABLE. ss. eapply Nat.le_lt_trans; [|exact EXT].
         rewrite <- join_r, <- join_r, <- join_r, <- join_l. ss.
       * econs; eauto. unfold sim_local_vwn. right.
         rewrite ? seq_assoc. ss.
-    + inv H. des. inv H2. inv H4. destruct l0; ss. rewrite EID in EID0. inv EID0.
+    + inv H1. des. inv H1. inv H4. destruct l0; ss. rewrite EID in EID0. inv EID0.
       exploit Valid.po_label_pre; eauto. i. des.
-      destruct eid1 as [tid1 eid1]. inv H1. ss. subst.
+      destruct eid1 as [tid1 eid1]. inv H. ss. subst.
       destruct label1; ss.
       * eapply Nat.le_lt_trans; [apply L.(LC).(VRO)|]; ss; cycle 1.
         { rewrite fun_add_spec. condtac; [|congr].
           inv WRITABLE. ss. eapply Nat.le_lt_trans; [|exact EXT].
           rewrite <- join_r, <- join_r, <- join_r, <- join_r, <- join_l.
-          rewrite LABEL1. refl.
+          destruct ord0; ss.
         }
         {  econs; eauto. unfold sim_local_vro. econs. splits; eauto.
            econs; ss. econs; eauto. econs; ss.
@@ -238,6 +238,18 @@ Proof.
         exploit LABELS_REV; eauto; ss.
         { apply nth_error_app_mon. eauto. }
         rewrite LABEL2. intro Y. inv Y. ss.
+    + inv H. des. inv H2. inv H4. destruct l0; ss. rewrite EID in EID0. inv EID0.
+      inv H1. des. inv H. inv H4. destruct l0; ss.
+      destruct x as [tid1 eid1]. inv H1. ss. subst.
+      eapply Nat.le_lt_trans; [apply L.(LC).(VRO)|]; ss; cycle 1.
+      { rewrite fun_add_spec. condtac; [|congr].
+        inv WRITABLE. ss. eapply Nat.le_lt_trans; [|exact EXT].
+        rewrite <- join_r, <- join_r, <- join_r, <- join_r, <- join_l.
+        destruct ord0; ss.
+      }
+      {  econs; eauto. unfold sim_local_vro. econs. splits; eauto.
+         econs; ss. econs; eauto. econs; ss.
+      }
     + destruct (equiv_dec arch riscv) eqn:Z; ss.
       rewrite fun_add_spec. condtac; [|congr].
       exploit Valid.rmw_is_po; eauto. destruct eid1. intro Y. inv Y. ss. subst.
