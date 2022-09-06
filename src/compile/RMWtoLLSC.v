@@ -72,8 +72,8 @@ Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
       [stmt_instr (instr_assign lhs rhs)]
   | rmw_stmt_instr (rmw_instr_load ord res eloc) =>
       [stmt_instr (instr_load false ord res eloc)]
-  | rmw_stmt_instr (rmw_instr_store ord res eloc eval) =>
-      [stmt_instr (instr_store false ord res eloc eval)]
+  | rmw_stmt_instr (rmw_instr_store ord eloc eval) =>
+      [stmt_instr (instr_store false ord tmp1 eloc eval)]
   | rmw_stmt_instr (rmw_instr_fadd ordr ordw res eloc eadd) =>
       [stmt_dowhile
          [stmt_instr (instr_load true ordr tmp1 eloc);
@@ -533,7 +533,7 @@ Section RMWtoLLSC.
       eexists (RMWExecUnit.mk _ _ _). splits.
       { econs 2; try refl. econs. econs; ss.
         - econs; ss.
-        - econs 8; eauto.
+        - econs 7; eauto.
       }
       rewrite VAL. condtac; ss.
       - right. eapply CIH; eauto.
@@ -616,11 +616,11 @@ Section RMWtoLLSC.
       exploit sim_local_fulfill; try exact LOCAL; eauto.
       { eapply sim_rmap_sem_expr; eauto.
         inv H1. ss. ii. eapply FRESH; eauto.
-        apply IdSet.add_2, IdSet.union_2. ss.
+        apply IdSet.union_2. ss.
       }
       { eapply sim_rmap_sem_expr; eauto.
         inv H1. ss. ii. eapply FRESH; eauto.
-        apply IdSet.add_2, IdSet.union_3. ss.
+        apply IdSet.union_3. ss.
       }
       { i. subst. ss. }
       i. des.
@@ -630,7 +630,8 @@ Section RMWtoLLSC.
         - econs 3; eauto.
       }
       right. eapply CIH; eauto.
-      - apply sim_rmap_add; ss. refl.
+      - apply sim_rmap_add_r; ss.
+        apply IdSet.add_2, IdSet.singleton_2. ss.
       - rewrite <- EXBANK0; ss.
     }
 
@@ -685,7 +686,7 @@ Section RMWtoLLSC.
         eexists (RMWExecUnit.mk _ _ _). splits.
         { econs 2; try refl. econs. econs; s.
           - econs; eauto.
-          - econs 5; eauto.
+          - econs 4; eauto.
           - ss.
         }
         left. pfold. red. s. splits.
@@ -774,14 +775,14 @@ Section RMWtoLLSC.
         eexists (RMWExecUnit.mk _ _ _). splits.
         { econs 2; try refl. econs. econs; ss.
           - econs; ss.
-          - econs 6; eauto.
+          - econs 5; eauto.
         }
         right. eapply CIH; eauto. congr.
       - exploit sim_local_dmb; eauto. i. des.
         eexists (RMWExecUnit.mk _ _ _). splits.
         { econs 2; try refl. econs. econs; ss.
           - econs; ss.
-          - econs 7; eauto.
+          - econs 6; eauto.
         }
         right. eapply CIH; eauto. congr.
     }

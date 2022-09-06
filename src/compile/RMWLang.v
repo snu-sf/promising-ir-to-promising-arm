@@ -17,7 +17,7 @@ Inductive rmw_instrT :=
 | rmw_instr_skip
 | rmw_instr_assign (lhs:Id.t) (rhs:exprT)
 | rmw_instr_load (ord:OrdR.t) (res:Id.t) (eloc:exprT)
-| rmw_instr_store (ord:OrdW.t) (res:Id.t) (eloc:exprT) (eval:exprT)
+| rmw_instr_store (ord:OrdW.t) (eloc:exprT) (eval:exprT)
 | rmw_instr_fadd (ordr:OrdR.t) (ordw:OrdW.t) (res:Id.t) (eloc:exprT) (eadd:exprT)
 | rmw_instr_barrier (b:Barrier.t)
 .
@@ -29,7 +29,7 @@ Definition regs_of_rmw_instr (i: rmw_instrT): IdSet.t :=
   match i with
   | rmw_instr_assign lhs rhs => IdSet.add lhs (regs_of_expr rhs)
   | rmw_instr_load _ res eloc => IdSet.add res (regs_of_expr eloc)
-  | rmw_instr_store _ res eloc eval => IdSet.add res (IdSet.union (regs_of_expr eloc) (regs_of_expr eval))
+  | rmw_instr_store _ eloc eval => IdSet.union (regs_of_expr eloc) (regs_of_expr eval)
   | rmw_instr_fadd _ _ res eloc eadd => IdSet.add res (IdSet.union (regs_of_expr eloc) (regs_of_expr eadd))
   | _ => IdSet.empty
   end.
@@ -51,7 +51,7 @@ Module RMWEvent.
   | internal
   | control (ctrl:A)
   | read (ord:OrdR.t) (vloc:ValA.t (A:=A)) (res:ValA.t (A:=A))
-  | write (ord:OrdW.t) (vloc:ValA.t (A:=A)) (vval:ValA.t (A:=A)) (res:ValA.t (A:=A))
+  | write (ord:OrdW.t) (vloc:ValA.t (A:=A)) (vval:ValA.t (A:=A))
   | fadd (ordr:OrdR.t) (ordw:OrdW.t) (vloc vold vnew: ValA.t (A:=A))
   | barrier (b:Barrier.t)
   .
@@ -93,13 +93,12 @@ Section RMWState.
            (mk ((rmw_stmt_instr (rmw_instr_load o res eloc))::stmts) rmap)
            (mk stmts rmap')
   | step_store
-      o res eloc eval stmts rmap vloc vval vres rmap'
+      o eloc eval stmts rmap vloc vval
       (LOC: vloc = sem_expr rmap eloc)
-      (VAL: vval = sem_expr rmap eval)
-      (RMAP: rmap' = RMap.add res vres rmap):
-      step (RMWEvent.write o vloc vval vres)
-           (mk ((rmw_stmt_instr (rmw_instr_store o res eloc eval))::stmts) rmap)
-           (mk stmts rmap')
+      (VAL: vval = sem_expr rmap eval):
+      step (RMWEvent.write o vloc vval)
+           (mk ((rmw_stmt_instr (rmw_instr_store o eloc eval))::stmts) rmap)
+           (mk stmts rmap)
   | step_fadd
       or ow res eloc eadd stmts rmap vloc vold vnew rmap'
       (LOC: vloc = sem_expr rmap eloc)

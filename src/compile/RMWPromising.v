@@ -37,11 +37,10 @@ Section Eqts.
       (RES: eqts_val res1 res2):
       eqts_rmw_event (RMWEvent.read ord vloc1 res1) (RMWEvent.read ord vloc2 res2)
   | eqts_rmw_event_write
-      ord vloc1 vloc2 vval1 vval2 res1 res2
+      ord vloc1 vloc2 vval1 vval2
       (VLOC: eqts_val vloc1 vloc2)
-      (VVAL: eqts_val vval1 vval2)
-      (RES: eqts_val res1 res2):
-      eqts_rmw_event (RMWEvent.write ord vloc1 vval1 res1) (RMWEvent.write ord vloc2 vval2 res2)
+      (VVAL: eqts_val vval1 vval2):
+      eqts_rmw_event (RMWEvent.write ord vloc1 vval1) (RMWEvent.write ord vloc2 vval2)
   | eqts_rmw_event_fadd
       ordr ordw vloc1 vloc2 vold1 vold2 vnew1 vnew2
       (VLOC: eqts_val vloc1 vloc2)
@@ -90,12 +89,8 @@ Section RMWLocal.
       (STEP: Local.read false ord vloc res ts lc1 mem lc2)
   | step_fulfill
       ord vloc vval res ts view_pre
-      (EVENT: event = RMWEvent.write ord vloc vval res)
+      (EVENT: event = RMWEvent.write ord vloc vval)
       (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2)
-  | step_write_failure
-      ord vloc vval res
-      (EVENT: event = RMWEvent.write ord vloc vval res)
-      (STEP: Local.write_failure false res lc1 lc2)
   | step_fadd
       ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
       (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
@@ -124,7 +119,6 @@ Section RMWLocal.
     inv LC; try refl.
     - eapply Local.read_incr. eauto.
     - eapply Local.fulfill_incr. eauto.
-    - eapply Local.write_failure_incr. eauto.
     - hexploit Local.read_incr; eauto. i.
       hexploit Local.fulfill_incr; eauto. i.
       etrans; eauto.
@@ -230,14 +224,10 @@ Section RMWExecUnit.
         eauto using ExecUnit.expr_wf.
       + eapply ExecUnit.read_step_wf; eauto.
         rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
-    - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
+    - inv VVAL. inv VIEW. inv VLOC. inv VIEW.
       econs; ss.
-      + inv STEP. inv WRITABLE.
-        apply ExecUnit.rmap_add_wf; viewtac.
-        rewrite TS. viewtac.
-      + eapply ExecUnit.fulfill_step_wf; eauto.
-        rewrite <- TS1. eapply ExecUnit.expr_wf; eauto.
-    - inv STEP. econs; ss.
+      eapply ExecUnit.fulfill_step_wf; eauto.
+      rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
     - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
       econs; ss.
       + inv STEP_READ. ss. subst.

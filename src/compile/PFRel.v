@@ -55,7 +55,7 @@ Qed.
 
 Definition is_release {A} `{_: orderC A} (e: RMWEvent.t (A:=A)): bool :=
   match e with
-  | RMWEvent.write ordw _ _ _
+  | RMWEvent.write ordw _ _
   | RMWEvent.fadd _ ordw _ _ _ => OrdW.ge OrdW.release_pc ordw
   | RMWEvent.barrier (Barrier.dmb rr rw wr ww) => andb rw ww
   | _ => false
@@ -80,19 +80,19 @@ Module PFRelLocal.
         (MEM: mem2 = mem1)
     | step_fulfill
         ord vloc vval res ts view_pre
-        (EVENT: event = RMWEvent.write ord vloc vval res)
+        (EVENT: event = RMWEvent.write ord vloc vval)
         (ORD: OrdW.ge ord OrdW.release_pc)
         (STEP: fulfill false ord vloc vval res ts tid view_pre lc1 mem1 lc2)
         (MEM: mem2 = mem1)
     | step_write
         lc1'
         ord vloc vval res ts view_pre
-        (EVENT: event = RMWEvent.write ord vloc vval res)
+        (EVENT: event = RMWEvent.write ord vloc vval)
         (STEP_PROMISE: promise vloc.(ValA.val) vval.(ValA.val) ts tid lc1 mem1 lc1' mem2)
         (STEP_FULFILL: fulfill false ord vloc vval res ts tid view_pre lc1' mem2 lc2)
     | step_write_failure
         ord vloc vval res
-        (EVENT: event = RMWEvent.write ord vloc vval res)
+        (EVENT: event = RMWEvent.write ord vloc vval)
         (STEP: write_failure false res lc1 lc2)
         (MEM: mem2 = mem1)
     | step_fadd_fulfill
@@ -337,24 +337,19 @@ Module PFRelExecUnit.
           eauto using ExecUnit.expr_wf.
         + eapply ExecUnit.read_step_wf; eauto.
           rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
-      - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
+      - inv VVAL. inv VIEW. inv VLOC. inv VIEW.
         econs; ss.
-        + inv STEP. inv WRITABLE.
-          apply ExecUnit.rmap_add_wf; viewtac.
-          rewrite TS. apply bot_spec.
-        + eapply ExecUnit.fulfill_step_wf; eauto.
-          rewrite <- TS1. eapply ExecUnit.expr_wf; eauto.
-      - inv RES. inv VIEW. inv VVAL. inv VIEW. inv VLOC. inv VIEW.
+        eapply ExecUnit.fulfill_step_wf; eauto.
+        rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
+      - inv VVAL. inv VIEW. inv VLOC. inv VIEW.
         econs; ss.
         + inv STEP_FULFILL. inv WRITABLE.
-          apply ExecUnit.rmap_add_wf; viewtac.
-          * inv STEP_PROMISE. inv MEM2.
-            eapply ExecUnit.rmap_append_wf; eauto.
-          * rewrite TS. apply bot_spec.
+          inv STEP_PROMISE. inv MEM2.
+          eapply ExecUnit.rmap_append_wf; eauto.
         + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
           { inv STEP_PROMISE. inv MEM2.
             rewrite List.app_length; s.
-            rewrite <- TS1. erewrite ExecUnit.expr_wf; eauto. nia.
+            rewrite <- TS0. erewrite ExecUnit.expr_wf; eauto. nia.
           }
           eapply ExecUnit.promise_wf; try exact PROMISE; eauto.
       - inv STEP. econs; ss.
@@ -561,7 +556,6 @@ Module PFRelExecUnit.
       - econs 1; eauto.
       - econs 2; eauto.
       - econs 3; eauto. destruct ord; ss.
-      - econs 5; eauto.
       - econs 6; eauto. destruct ordw; ss.
       - econs 8; eauto.
       - econs 9; eauto. destruct rw, ww; ss.
