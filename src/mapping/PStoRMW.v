@@ -98,3 +98,59 @@ Fixpoint ps_to_rmw_stmt (stmt: Stmt.t): rmw_stmtT :=
 
 Definition ps_to_rmw_stmts (s: list Stmt.t): list rmw_stmtT :=
   List.map ps_to_rmw_stmt s.
+
+
+Module PStoRMW.
+  Fixpoint ntt (n: nat): Time.t :=
+    match n with
+    | O => Time.bot
+    | S n => Time.incr (ntt n)
+    end.
+
+  Lemma le_ntt
+        m n
+        (LE: m <= n):
+    Time.le (ntt m) (ntt n).
+  Proof.
+    induction LE; try refl.
+    etrans; eauto. ss. econs.
+    apply Time.incr_spec.
+  Qed.
+
+  Lemma lt_ntt
+        m n
+        (LT: m < n):
+    Time.lt (ntt m) (ntt n).
+  Proof.
+    eapply TimeFacts.lt_le_lt; try eapply le_ntt; eauto.
+    apply Time.incr_spec.
+  Qed.
+
+  Lemma ntt_le
+        m n
+        (LE: Time.le (ntt m) (ntt n)):
+    m <= n.
+  Proof.
+    destruct (Nat.le_gt_cases m n); ss.
+    apply lt_ntt in H. timetac.
+  Qed.
+
+  Lemma ntt_lt
+        m n
+        (LT: Time.lt (ntt m) (ntt n)):
+    m < n.
+  Proof.
+    destruct (Nat.le_gt_cases n m); ss.
+    apply le_ntt in H. timetac.
+  Qed.
+
+  Lemma ntt_inj
+        m n
+        (EQ: ntt m = ntt n):
+    m = n.
+  Proof.
+    apply le_antisym.
+    - apply ntt_le. rewrite EQ. refl.
+    - apply ntt_le. rewrite EQ. refl.
+  Qed.
+End PStoRMW.
