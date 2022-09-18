@@ -22,8 +22,8 @@ Require Import PromisingArch.lib.Lang.
 
 Require Import PromisingArch.promising.Promising.
 
-Require Import PromisingArch.compile.RMWLang.
-Require Import PromisingArch.compile.RMWPromising.
+Require Import PromisingArch.mapping.RMWLang.
+Require Import PromisingArch.mapping.RMWPromising.
 
 Set Implicit Arguments.
 

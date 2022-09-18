@@ -20,7 +20,7 @@ Require Import PromisingArch.lib.Lang.
 
 Require Import PromisingArch.promising.Promising.
 
-Require Import PromisingArch.compile.RMWLang.
+Require Import PromisingArch.mapping.RMWLang.
 
 Set Implicit Arguments.
 
