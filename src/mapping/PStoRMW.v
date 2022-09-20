@@ -27,6 +27,8 @@ From PromisingIR Require Import Local.
 From PromisingIR Require Import Thread.
 
 Require Import PromisingArch.lib.Basic.
+Require Import PromisingArch.lib.Order.
+Require Import PromisingArch.lib.Time.
 Require Import PromisingArch.lib.Lang.
 
 Require Import PromisingArch.promising.Promising.
@@ -36,6 +38,12 @@ Require Import PromisingArch.mapping.PSLang.
 
 Set Implicit Arguments.
 
+Module PSLoc := PromisingLib.Loc.Loc.
+Module PSTime := PromisingIR.Time.Time.
+Module PSView := PromisingIR.View.View.
+Module PSPromises := PromisingIR.Promises.Promises.
+Module PSLocal := PromisingIR.Local.Local.
+Module PSMemory := PromisingIR.Memory.Memory.
 
 Definition const_to_val (c: Const.t): Val.t :=
   match c with
@@ -99,36 +107,35 @@ Fixpoint ps_to_rmw_stmt (stmt: Stmt.t): rmw_stmtT :=
 Definition ps_to_rmw_stmts (s: list Stmt.t): list rmw_stmtT :=
   List.map ps_to_rmw_stmt s.
 
-
 Module PStoRMW.
-  Fixpoint ntt (n: nat): Time.t :=
+  Fixpoint ntt (n: nat): PSTime.t :=
     match n with
-    | O => Time.bot
-    | S n => Time.incr (ntt n)
+    | O => PSTime.bot
+    | S n => PSTime.incr (ntt n)
     end.
 
   Lemma le_ntt
         m n
         (LE: m <= n):
-    Time.le (ntt m) (ntt n).
+    PSTime.le (ntt m) (ntt n).
   Proof.
     induction LE; try refl.
     etrans; eauto. ss. econs.
-    apply Time.incr_spec.
+    apply PSTime.incr_spec.
   Qed.
 
   Lemma lt_ntt
         m n
         (LT: m < n):
-    Time.lt (ntt m) (ntt n).
+    PSTime.lt (ntt m) (ntt n).
   Proof.
     eapply TimeFacts.lt_le_lt; try eapply le_ntt; eauto.
-    apply Time.incr_spec.
+    apply PSTime.incr_spec.
   Qed.
 
   Lemma ntt_le
         m n
-        (LE: Time.le (ntt m) (ntt n)):
+        (LE: PSTime.le (ntt m) (ntt n)):
     m <= n.
   Proof.
     destruct (Nat.le_gt_cases m n); ss.
@@ -137,7 +144,7 @@ Module PStoRMW.
 
   Lemma ntt_lt
         m n
-        (LT: Time.lt (ntt m) (ntt n)):
+        (LT: PSTime.lt (ntt m) (ntt n)):
     m < n.
   Proof.
     destruct (Nat.le_gt_cases n m); ss.
@@ -153,4 +160,59 @@ Module PStoRMW.
     - apply ntt_le. rewrite EQ. refl.
     - apply ntt_le. rewrite EQ. refl.
   Qed.
+
+
+  Variant sim_tview (tview: TView.t) (lc_arm: Local.t (A:=unit)): Prop :=
+    | sim_tview_intro
+        (REL: forall loc loc',
+            PSTime.le
+              ((tview.(TView.rel) loc).(View.rlx) loc')
+              (ntt (View.ts (join lc_arm.(Local.vwn) (ifc (PSLoc.eq_dec loc' loc) (lc_arm.(Local.coh) (Zpos loc)))))))
+        (CUR: forall loc,
+            PSTime.le
+              (tview.(TView.cur).(View.rlx) loc)
+              (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
+        (ACQ: forall loc,
+            PSTime.le
+              (tview.(TView.cur).(View.rlx) loc)
+              (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
+        (OLD: forall loc, le (lc_arm.(Local.coh) loc) (join lc_arm.(Local.vro) lc_arm.(Local.vwo)))
+        (FWD: forall loc,
+            le (lc_arm.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc_arm.(Local.coh) loc)))
+  .
+
+  Variant sim_val: forall (val_ps: Const.t) (val_arm: Val.t), Prop :=
+    | sim_val_num
+        v:
+      sim_val (Const.num v) v
+    | sim_val_undef
+        v:
+      sim_val Const.undef v
+  .
+
+  (* TODO: from? *)
+  Variant sim_memory (tid: Ident.t) (n: Time.t)
+    (prm_ps: BoolMap.t) (prm_arm: Promises.t)
+    (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
+    | sim_memory_intro
+        (PRM_SOUND: forall loc (PROMISED: prm_ps loc = true),
+          exists ts msg,
+            (<<LE: le ts n>>) /\
+            (<<PROMISED_ARM: Promises.lookup ts prm_arm>>) /\
+            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg>>) /\
+            (<<GET_PS: Memory.get loc (ntt ts) mem_ps = None>>))
+        (MEM_SOUND: forall loc from to val_ps released na
+                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.mk val_ps released na)),
+          exists ts val_arm,
+            (<<TO: to = ntt ts>>) /\
+            (<<GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk (Zpos loc) val_arm tid)>>) /\
+            (<<VAL: sim_val val_ps val_arm>>))
+        (MEM_COMPLETE: forall loc ts val_arm tid'
+                              (TS: le ts n)
+                              (GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk loc val_arm tid')),
+          exists loc' from val_ps released na,
+            (<<LOC: loc = Zpos loc'>>) /\
+            (<<GET_PS: Memory.get loc' (ntt ts) mem_ps = Some (from, Message.mk val_ps released na)>>) /\
+            (<<VAL: sim_val val_ps val_arm>>))
+  .
 End PStoRMW.
