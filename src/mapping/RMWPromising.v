@@ -171,6 +171,22 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors state_step: core.
 
+  Definition is_dmbsy (e: RMWEvent.t (A:=View.t (A:=A))): bool :=
+    match e with
+    | RMWEvent.barrier (Barrier.dmb true true true true) => true
+    | _ => false
+    end.
+
+  Inductive state_step_dmbsy (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  | state_step_dmbsy_intro
+      e
+      (STEP: state_step0 tid e e eu1 eu2)
+      (DMBSY: is_dmbsy e -> le n eu1.(local).(Local.vro).(View.ts) /\
+                            le n eu1.(local).(Local.vwo).(View.ts))
+  .
+  #[local]
+  Hint Constructors state_step_dmbsy: core.
+
   Inductive promise_step (tid:Id.t) (eu1 eu2:t): Prop :=
   | promise_step_intro
       loc val ts
@@ -254,6 +270,14 @@ Section RMWExecUnit.
     inv STEP. eapply state_step0_wf; eauto. refl.
   Qed.
 
+  Lemma state_step_dmbsy_wf n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2)
+        (WF: wf tid eu1):
+    wf tid eu2.
+  Proof.
+    inv STEP. eapply state_step0_wf; eauto. refl.
+  Qed.
+
   Lemma promise_step_wf tid eu1 eu2
         (STEP: promise_step tid eu1 eu2)
         (WF: wf tid eu1):
@@ -314,6 +338,15 @@ Section RMWExecUnit.
     - rewrite MEM, app_nil_r. ss.
   Qed.
 
+  Lemma state_step_dmbsy_incr n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2):
+    le eu1 eu2.
+  Proof.
+    inv STEP. inv STEP0. econs.
+    - eapply RMWLocal.step_incr. eauto.
+    - rewrite MEM, app_nil_r. ss.
+  Qed.
+
   Lemma promise_step_incr tid eu1 eu2
         (STEP: promise_step tid eu1 eu2):
     le eu1 eu2.
@@ -346,6 +379,14 @@ Section RMWExecUnit.
   Lemma state_step_promises_le
         tid eu1 eu2
         (STEP: state_step tid eu1 eu2):
+    Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
+  Proof.
+    inv STEP. eauto using state_step0_promises_le.
+  Qed.
+
+  Lemma state_step_dmbsy_promises_le
+        n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2):
     Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
   Proof.
     inv STEP. eauto using state_step0_promises_le.

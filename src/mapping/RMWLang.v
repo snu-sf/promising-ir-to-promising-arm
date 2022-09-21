@@ -47,7 +47,7 @@ Definition rmw_program := IdMap.t (list rmw_stmtT).
 
 
 Module RMWEvent.
-  Inductive t A `{_: orderC A} :=
+  Variant t A `{_: orderC A} :=
   | internal
   | control (ctrl:A)
   | read (ord:OrdR.t) (vloc:ValA.t (A:=A)) (res:ValA.t (A:=A))

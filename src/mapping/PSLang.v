@@ -72,36 +72,16 @@ Module Stmt.
   Coercion instr: Instr.t >-> t.
 End Stmt.
 
+
 Module RegFile.
-  Definition t := IdMap.t Const.t.
+  Definition t := IdentFun.t Const.t.
 
-  Definition init: t := IdMap.empty _.
-
-  Definition find (reg:Id.t) (rf:t): Const.t :=
-    match IdMap.find reg rf with
-    | Some v => v
-    | None => 0%Z
-    end.
-
-  Definition add (reg:Id.t) (val:Const.t) (rf:t): t :=
-    IdMap.add reg val rf.
-
-  Lemma add_o reg' reg val rf:
-    find reg' (add reg val rf) =
-    if reg' == reg
-    then val
-    else find reg' rf.
-  Proof.
-    unfold add, find. rewrite IdMap.add_spec.
-    repeat match goal with
-           | [|- context[if ?c then _ else _]] => destruct c
-           end; ss.
-  Qed.
+  Definition init: t := IdentFun.init Const.zero.
 
   Fixpoint eval_expr (rf: t) (e: Expr.t): Const.t :=
     match e with
     | Expr.const c => c
-    | Expr.reg r => find r rf
+    | Expr.reg r => IdentFun.find r rf
     | Expr.op1 op e => Expr.eval_op1 op (eval_expr rf e)
     | Expr.op2 op e1 e2 => Expr.eval_op2 op (eval_expr rf e1) (eval_expr rf e2)
     end.
@@ -120,14 +100,14 @@ Module RegFile.
         rf
         (Instr.assign lhs rhs)
         ProgramEvent.silent
-        (add lhs (eval_expr rf rhs) rf)
+        (IdentFun.add lhs (eval_expr rf rhs) rf)
   | eval_load
       rf reg loc ord val:
       eval_instr
         rf
         (Instr.load reg loc ord)
         (ProgramEvent.read loc val ord)
-        (add reg val rf)
+        (IdentFun.add reg val rf)
   | eval_store
       rf loc e ord:
       eval_instr
@@ -143,7 +123,7 @@ Module RegFile.
       rf
       (Instr.fadd reg loc addendum ordr ordw)
       (ProgramEvent.update loc old new ordr ordw)
-      (add reg old rf)
+      (IdentFun.add reg old rf)
   | eval_fence
       rf ordr ordw:
       eval_instr
@@ -210,7 +190,7 @@ Module State.
   .
 End State.
 
-Program Definition lang: Language.t ProgramEvent.t :=
+Program Definition lang_ps: Language.t ProgramEvent.t :=
   Language.mk
     State.init
     State.is_terminal
