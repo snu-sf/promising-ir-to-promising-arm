@@ -177,23 +177,31 @@ Module PStoRMW.
   .
 
   Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (gl_ps: Global.t) (mem_arm: Memory.t):
-    forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
-           (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
+    (th_ps: Thread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
     | sim_thread_intro
-        st_ps lc_ps st_arm lc_arm
         eu1 eu2
-        (STEPS1: rtc (RMWExecUnit.state_step tid)
-                   (RMWExecUnit.mk st_arm lc_arm mem_arm) eu1)
-        (SIM_STATE: sim_state st_ps st_arm)
-        (SIM_TVIEW: sim_tview lc_ps.(PSLocal.tview) lc_arm)
+        (STEPS1: rtc (RMWExecUnit.state_step tid) eu eu1)
+        (SIM_STATE: sim_state (Thread.state th_ps) (RMWExecUnit.state eu1))
+        (SIM_TVIEW: sim_tview (PSLocal.tview (Thread.local th_ps)) (RMWExecUnit.local eu1))
+        (SIM_MEM: sim_memory tid n
+                    (Thread.local th_ps) (Global.memory (Thread.global th_ps))
+                    (Local.promises (RMWExecUnit.local eu1)) (RMWExecUnit.mem eu1))
         (STEPS2: if after_sc
                  then rtc (RMWExecUnit.state_step_dmbsy (S n) tid) eu1 eu2
                  else rtc (RMWExecUnit.state_step_dmbsy n tid) eu1 eu2)
         (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
-      :
-      sim_thread tid n after_sc gl_ps mem_arm
-                 (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
+  .
+
+  Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
+    (gl_ps: Global.t) (mem_arm: Memory.t):
+    forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
+           (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
+    | sim_thread_sl_intro
+        st_ps lc_ps st_arm lc_arm
+        (SIM_THREAD: sim_thread tid n after_sc
+                       (Thread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
+      sim_thread_sl tid n after_sc gl_ps mem_arm
+        (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
   .
 
   Variant sim (n: Time.t) (c: Configuration.t) (m: RMWMachine.t): Prop :=
@@ -203,7 +211,7 @@ Module PStoRMW.
         (SIM_THREADS:
           forall tid,
             opt_rel
-              (sim_thread tid n true c.(Configuration.global) m.(RMWMachine.mem))
+              (sim_thread_sl tid n true c.(Configuration.global) m.(RMWMachine.mem))
               (IdentMap.find tid c.(Configuration.threads))
               (IdMap.find tid m.(RMWMachine.tpool)))
         (SIM_SC: forall loc,
