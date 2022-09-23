@@ -79,6 +79,7 @@ Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
          [stmt_instr (instr_load true ordr tmp1 eloc);
           stmt_instr (instr_store true ordw tmp2 eloc (expr_op2 op_add (expr_reg tmp1) eadd))]
          (expr_op1 op_not (expr_reg tmp2));
+       stmt_if (expr_reg tmp1) [] [];
        stmt_instr (instr_assign res (expr_reg tmp1))]
   | rmw_stmt_instr (rmw_instr_barrier b) =>
       [stmt_instr (instr_barrier b)]
@@ -659,6 +660,39 @@ Section RMWtoLLSC.
 
       { (* exclusive store - succeed *)
         clear CIH_LOOP.
+        esplits; [refl|]. left.
+        pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* if *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP1. ss. subst.
+        inv STATE. inv LOCAL0; inv EVENT.
+        condtac; ss.
+        { exfalso. apply c.
+          rewrite RMap.add_o. condtac; try congr.
+          inv STEP0. ss.
+        }
+        clear e X.
+        replace local1 with local0 in *; cycle 1.
+        { destruct local0, local1.
+          inv LC; ss. inv LC2. f_equal.
+          rewrite RMap.add_o. condtac; try congr.
+          inv STEP0. ss. rewrite ARCH. ss.
+          rewrite bot_join; ss.
+          destruct view_pre. destruct annot. ss.
+          apply View.order.
+        }
+        clear local1 LC.
+        esplits; [refl|].
+        left. pfold. red. s. splits.
+        { i. repeat (red in TERMINAL_TGT; des; ss). }
+
+        (* fake branch on read value *)
+        i. destruct eu2_tgt as [[]].
+        inv STEP_TGT. inv STEP1. ss. subst.
+        inv STATE. inv LOCAL0; inv EVENT.
+
         exploit sim_local_read; try exact STEP; eauto.
         { eapply sim_rmap_sem_expr; eauto.
           inv H1. ss. ii. eapply FRESH; eauto.
@@ -683,43 +717,30 @@ Section RMWtoLLSC.
               apply IdSet.add_2, IdSet.union_3. ss.
         }
         i. des.
+        exploit sim_local_control; try exact LC; eauto.
+        { rewrite RMap.add_o. condtac; try congr. clear c X.
+          rewrite RMap.add_o. condtac; try congr. clear e X.
+          apply RES.
+        }
+        i. des.
+
         eexists (RMWExecUnit.mk _ _ _). splits.
         { econs 2; try refl. econs. econs; s.
           - econs; eauto.
           - econs 4; eauto.
           - ss.
         }
-        left. pfold. red. s. splits.
-        { i. repeat (red in TERMINAL_TGT; des; ss). }
-
-        (* if *)
-        i. destruct eu2_tgt as [[]].
-        inv STEP_TGT. inv STEP1. ss. subst.
-        inv STATE. inv LOCAL1; inv EVENT.
-        condtac; ss.
-        { exfalso. apply c.
-          rewrite RMap.add_o. condtac; try congr.
-          inv STEP_SRC0. ss.
-        }
-        clear e X.
-        replace local1 with local0 in *; cycle 1.
-        { destruct local0, local1.
-          inv LC; ss. inv LC2. f_equal.
-          rewrite RMap.add_o. condtac; try congr.
-          inv STEP_SRC0. ss. rewrite ARCH. ss.
-          rewrite bot_join; ss.
-          destruct view_pre_src. destruct annot. ss.
-          apply View.order.
-        }
-        clear local1 LC.
-        esplits; [refl|].
+        match goal with
+        | [|-context[if ?c then ?s else ?s]] =>
+            replace (if c then s else s) with s by (condtac; ss); s
+        end.
         left. pfold. red. s. splits.
         { i. repeat (red in TERMINAL_TGT; des; ss). }
 
         (* assign *)
         i. destruct eu2_tgt as [[]].
         inv STEP_TGT. inv STEP1. ss. subst.
-        inv STATE. inv LOCAL1; inv EVENT.
+        inv STATE. inv LOCAL3; inv EVENT.
         esplits; [refl|].
         right. eapply CIH; eauto.
         - rewrite List.app_nil_r. ss.

@@ -1494,6 +1494,16 @@ Section ExecUnit.
       }
   Qed.
 
+  Lemma control_step_wf
+        tid mem ctrl lc1 lc2
+        (STEP: Local.control ctrl lc1 lc2)
+        (WF: Local.wf tid mem lc1)
+        (CTRL: ctrl.(View.ts) <= List.length mem):
+    Local.wf tid mem lc2.
+  Proof.
+    inv WF. inv STEP. econs; viewtac.
+  Qed.
+
   Lemma state_step0_wf tid e1 e2 eu1 eu2
         (STEP: state_step0 tid e1 e2 eu1 eu2)
         (EVENT: eqts_event e1 e2)

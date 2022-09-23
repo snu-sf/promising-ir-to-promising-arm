@@ -96,18 +96,20 @@ Module PFRelLocal.
         (STEP: write_failure false res lc1 lc2)
         (MEM: mem2 = mem1)
     | step_fadd_fulfill
-        ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
+        ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1''
         (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
         (ORD: OrdW.ge ordw OrdW.release_pc)
         (STEP_READ: read true ordr vloc vold ts_old lc1 mem1 lc1')
-        (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem1 lc2)
+        (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem1 lc1'')
+        (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
         (MEM: mem2 = mem1)
     | step_fadd_write
-        ordr ordw vloc vold vnew ts_old ts_new res lc1' lc1'' view_pre
+        ordr ordw vloc vold vnew ts_old ts_new res lc1' lc1'' view_pre lc1'''
         (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
         (STEP_READ: read true ordr vloc vold ts_old lc1 mem1 lc1')
         (STEP_PROMISE: promise vloc.(ValA.val) vnew.(ValA.val) ts_new tid lc1' mem1 lc1'' mem2)
-        (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1'' mem2 lc2)
+        (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1'' mem2 lc1''')
+        (STEP_CONTROL: Local.control vold.(ValA.annot) lc1''' lc2)
     | step_isb
         (EVENT: event = RMWEvent.barrier Barrier.isb)
         (STEP: isb lc1 lc2)
@@ -146,9 +148,11 @@ Module PFRelLocal.
       - eauto using fulfill_incr.
       - etrans; eauto using promise_incr, fulfill_incr.
       - eauto using write_failure_incr.
-      - etrans; eauto using read_incr, fulfill_incr.
       - etrans; eauto using read_incr.
-        etrans; eauto using promise_incr, fulfill_incr.
+        etrans; eauto using fulfill_incr, control_incr.
+      - etrans; eauto using read_incr.
+        etrans; eauto using promise_incr.
+        etrans; eauto using fulfill_incr, control_incr.
       - eauto using isb_incr.
       - eauto using dmb_incr.
       - eauto using control_incr.
@@ -163,9 +167,9 @@ Module PFRelLocal.
       - inv STEP0. ss. apply Promises.unset_le.
       - inv STEP_PROMISE. inv STEP_FULFILL. ss.
         apply Promises.unset_set_le.
-      - inv STEP_READ. inv STEP_FULFILL. ss.
+      - inv STEP_READ. inv STEP_FULFILL. inv STEP_CONTROL. ss.
         apply Promises.unset_le.
-      - inv STEP_READ. inv STEP_PROMISE. ss. inv STEP_FULFILL. ss.
+      - inv STEP_READ. inv STEP_PROMISE. ss. inv STEP_FULFILL. inv STEP_CONTROL. ss.
         apply Promises.unset_set_le.
       - inv LC. ss.
     Qed.
@@ -233,10 +237,10 @@ Module PFRelLocal.
       - inv STEP_FULFILL; ss.
         eapply Promises.le_sound; try eapply Promises.unset_le.
         eapply promise_promises_sound; eauto.
-      - inv STEP_FULFILL; ss.
+      - inv STEP_CONTROL. inv STEP_FULFILL. ss.
         eapply Promises.le_sound; try eapply Promises.unset_le.
         inv STEP_READ. ss.
-      - inv STEP_FULFILL; ss.
+      - inv STEP_CONTROL. inv STEP_FULFILL. ss.
         eapply Promises.le_sound; try eapply Promises.unset_le.
         eapply promise_promises_sound; try exact STEP_PROMISE.
         inv STEP_READ. ss.
@@ -354,18 +358,30 @@ Module PFRelExecUnit.
           eapply ExecUnit.promise_wf; try exact PROMISE; eauto.
       - inv STEP. econs; ss.
       - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
-        econs; ss.
-        + inv STEP_READ. ss. subst.
+        assert (VOLD: View.ts (ValA.annot vold) <= length mem1).
+        { inv STEP_READ. ss. subst.
           exploit FWDVIEW; eauto.
           { eapply ExecUnit.read_wf. eauto. }
-          i. apply ExecUnit.rmap_add_wf; viewtac.
-          rewrite TS0, <- TS. viewtac.
+          i. rewrite TS0, <- TS. viewtac.
           eauto using ExecUnit.expr_wf.
-        + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+        }
+        econs; ss.
+        + inv STEP_READ. ss. subst.
+          apply ExecUnit.rmap_add_wf; viewtac.
+        + eapply ExecUnit.control_step_wf; try exact STEP_CONTROL; cycle 1.
+          { rewrite <- TS0. ss. }
+          eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
           { rewrite <- TS. eapply ExecUnit.expr_wf; eauto. }
           eapply ExecUnit.read_step_wf; eauto.
           rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
       - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
+        assert (VOLD: View.ts (ValA.annot vold) <= length mem1).
+        { inv STEP_READ. ss. subst.
+          exploit FWDVIEW; eauto.
+          { eapply ExecUnit.read_wf. eauto. }
+          i. rewrite TS0, <- TS. viewtac.
+          eauto using ExecUnit.expr_wf.
+        }
         econs; ss.
         + inv STEP_READ. ss. subst.
           exploit FWDVIEW; eauto.
@@ -377,7 +393,12 @@ Module PFRelExecUnit.
             rewrite List.app_length. s.
             etrans; [|eapply Nat.le_add_r].
             viewtac. erewrite ExecUnit.expr_wf; eauto.
-        + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+        + eapply ExecUnit.control_step_wf; try exact STEP_CONTROL; cycle 1.
+          { rewrite <- TS0.
+            inv STEP_PROMISE. inv MEM2.
+            rewrite List.app_length; s. nia.
+          }
+          eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
           { inv STEP_PROMISE. inv MEM2.
             rewrite List.app_length; s.
             rewrite <- TS. erewrite ExecUnit.expr_wf; eauto. nia.

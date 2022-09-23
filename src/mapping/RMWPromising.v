@@ -92,10 +92,11 @@ Section RMWLocal.
       (EVENT: event = RMWEvent.write ord vloc vval)
       (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2)
   | step_fadd
-      ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre
+      ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1''
       (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
       (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1')
-      (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc2)
+      (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'')
+      (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
   | step_isb
       (EVENT: event = RMWEvent.barrier Barrier.isb)
       (STEP: Local.isb lc1 lc2)
@@ -121,7 +122,8 @@ Section RMWLocal.
     - eapply Local.fulfill_incr. eauto.
     - hexploit Local.read_incr; eauto. i.
       hexploit Local.fulfill_incr; eauto. i.
-      etrans; eauto.
+      hexploit Local.control_incr; eauto. i.
+      do 2 (etrans; eauto).
     - eapply Local.isb_incr. eauto.
     - eapply Local.dmb_incr. eauto.
     - eapply Local.control_incr. eauto.
@@ -134,7 +136,7 @@ Section RMWLocal.
   Proof.
     inv STEP; ss; try by (inv STEP0; ss).
     - inv STEP0. ss. apply Promises.unset_le.
-    - inv STEP_READ. inv STEP_FULFILL. ss.
+    - inv STEP_READ. inv STEP_FULFILL. inv STEP_CONTROL. ss.
       apply Promises.unset_le.
     - inv LC. ss.
   Qed.
@@ -245,14 +247,17 @@ Section RMWExecUnit.
       eapply ExecUnit.fulfill_step_wf; eauto.
       rewrite <- TS0. eapply ExecUnit.expr_wf; eauto.
     - inv VLOC. inv VIEW. inv VOLD. inv VIEW. inv VNEW. inv VIEW.
-      econs; ss.
-      + inv STEP_READ. ss. subst.
+      assert (VOLD: View.ts (ValA.annot vold) <= length mem1).
+      { inv STEP_READ. ss. subst.
         exploit FWDVIEW; eauto.
         { eapply ExecUnit.read_wf. eauto. }
-        i. apply ExecUnit.rmap_add_wf; viewtac.
-        rewrite TS0, <- TS. viewtac.
+        i. rewrite TS0, <- TS. viewtac.
         eauto using ExecUnit.expr_wf.
-      + eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
+      }
+      econs; ss.
+      + apply ExecUnit.rmap_add_wf; viewtac.
+      + eapply ExecUnit.control_step_wf; try exact STEP_CONTROL; try nia.
+        eapply ExecUnit.fulfill_step_wf; try exact STEP_FULFILL; cycle 1.
         { rewrite <- TS. eapply ExecUnit.expr_wf; eauto. }
         eapply ExecUnit.read_step_wf; eauto.
         rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
