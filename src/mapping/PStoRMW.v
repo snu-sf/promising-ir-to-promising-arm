@@ -69,14 +69,14 @@ Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
       rmw_instr_store
         (if Ordering.le Ordering.acqrel ord
          then OrdW.release_pc
-         else if Ordering.le Ordering.relaxed ord then OrdW.srlx else OrdW.pln)
+         else if Ordering.le Ordering.plain ord then OrdW.srlx else OrdW.pln)
         (expr_const (Zpos loc)) (ps_to_rmw_expr e)
   | Instr.fadd reg loc e ordr ordw =>
       rmw_instr_fadd
         (if Ordering.le Ordering.acqrel ordr then OrdR.acquire_pc else OrdR.pln)
         (if Ordering.le Ordering.acqrel ordw
          then OrdW.release_pc
-         else if Ordering.le Ordering.relaxed ordw then OrdW.srlx else OrdW.pln)
+         else if Ordering.le Ordering.plain ordw then OrdW.srlx else OrdW.pln)
         reg (expr_const (Zpos loc)) (ps_to_rmw_expr e)
   | Instr.fence ordr ordw =>
       rmw_instr_barrier
@@ -113,7 +113,7 @@ Module PStoRMW.
         v:
       sim_val Const.undef v
   .
-  #[export] Hint Constructors sim_val.
+  #[export] Hint Constructors sim_val: core.
 
   Variant sim_state (st_ps: State.t) (st_arm: RMWState.t (A:=View.t (A:=unit))): Prop :=
     | sim_state_intro
@@ -121,7 +121,7 @@ Module PStoRMW.
         (REGS: forall r, sim_val (IdentFun.find r st_ps.(State.regs))
                                  (RMap.find r st_arm.(RMWState.rmap)).(ValA.val))
   .
-  #[export] Hint Constructors sim_state.
+  #[export] Hint Constructors sim_state: core.
 
   Variant sim_tview (tview: TView.t) (lc_arm: Local.t (A:=unit)): Prop :=
     | sim_tview_intro
@@ -141,7 +141,7 @@ Module PStoRMW.
         (FWD: forall loc,
             le (lc_arm.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc_arm.(Local.coh) loc)))
   .
-  #[export] Hint Constructors sim_tview.
+  #[export] Hint Constructors sim_tview: core.
 
   Variant sim_memory (tid: Ident.t) (n: Time.t)
     (lc_ps: PSLocal.t) (mem_ps: PSMemory.t)
