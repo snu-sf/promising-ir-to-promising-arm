@@ -143,6 +143,7 @@ Module PStoRMW.
   .
   #[export] Hint Constructors sim_tview: core.
 
+  (* TODO: fix with reserves *)
   Variant sim_memory (tid: Ident.t) (n: Time.t)
     (lc_ps: PSLocal.t) (mem_ps: PSMemory.t)
     (prm_arm: Promises.t) (mem_arm: Memory.t): Prop :=
@@ -154,7 +155,7 @@ Module PStoRMW.
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg>>) /\
             (<<GET_PS: Memory.get loc (ntt ts) mem_ps = None>>))
         (MEM_SOUND: forall loc from to val_ps released na
-                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.mk val_ps released na)),
+                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.message val_ps released na)),
           exists fts tts val_arm ttid,
             (<<TO: to = ntt tts>>) /\
             (<<FROM: from = ntt fts>>) /\
@@ -168,11 +169,11 @@ Module PStoRMW.
                               (GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk loc val_arm tid')),
           exists loc' from val_ps released na,
             (<<LOC: loc = Zpos loc'>>) /\
-            (<<GET_PS: Memory.get loc' (ntt ts) mem_ps = Some (from, Message.mk val_ps released na)>>) /\
+            (<<GET_PS: Memory.get loc' (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
             (<<VAL: sim_val val_ps val_arm>>) /\
             (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(TView.rel) loc'))>>))
         (RELEASED: forall loc from to val released na
-                          (GET: PSMemory.get loc to mem_ps = Some (from, Message.mk val released na)),
+                          (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
   .
 
