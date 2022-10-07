@@ -123,19 +123,19 @@ Module PStoRMW.
   .
   #[export] Hint Constructors sim_state: core.
 
-  Variant sim_tview (tview: TView.t) (lc_arm: Local.t (A:=unit)): Prop :=
+  Variant sim_tview (tview: PSTView.t) (lc_arm: Local.t (A:=unit)): Prop :=
     | sim_tview_intro
         (REL: forall loc loc',
             PSTime.le
-              ((tview.(TView.rel) loc).(View.rlx) loc')
+              ((tview.(PSTView.rel) loc).(View.rlx) loc')
               (ntt (View.ts (join lc_arm.(Local.vwn) (ifc (PSLoc.eq_dec loc' loc) (lc_arm.(Local.coh) (Zpos loc)))))))
         (CUR: forall loc,
             PSTime.le
-              (tview.(TView.cur).(View.rlx) loc)
+              (tview.(PSTView.cur).(View.rlx) loc)
               (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
         (ACQ: forall loc,
             PSTime.le
-              (tview.(TView.cur).(View.rlx) loc)
+              (tview.(PSTView.cur).(View.rlx) loc)
               (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
         (OLD: forall loc, le (lc_arm.(Local.coh) loc) (join lc_arm.(Local.vro) lc_arm.(Local.vwo)))
         (FWD: forall loc,
@@ -143,7 +143,6 @@ Module PStoRMW.
   .
   #[export] Hint Constructors sim_tview: core.
 
-  (* TODO: fix with reserves *)
   Variant sim_memory (tid: Ident.t) (n: Time.t)
     (lc_ps: PSLocal.t) (mem_ps: PSMemory.t)
     (prm_arm: Promises.t) (mem_arm: Memory.t): Prop :=
@@ -153,17 +152,28 @@ Module PStoRMW.
             (<<LE: le ts n>>) /\
             (<<PROMISED_ARM: Promises.lookup ts prm_arm>>) /\
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg>>) /\
+            (<<TID: msg.(Msg.tid) = tid>>) /\
             (<<GET_PS: Memory.get loc (ntt ts) mem_ps = None>>))
-        (MEM_SOUND: forall loc from to val_ps released na
-                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.message val_ps released na)),
-          exists fts tts val_arm ttid,
+        (RSV_SOUND: forall loc from to
+                           (RESERVED: Memory.get loc to (PSLocal.reserves lc_ps) = Some (from, Message.reserve)),
+          exists fts tts tval,
+            (<<LE: le tts n>>) /\
             (<<TO: to = ntt tts>>) /\
             (<<FROM: from = ntt fts>>) /\
-            (<<GET_ARM: Memory.get_msg tts mem_arm = Some (Msg.mk (Zpos loc) val_arm ttid)>>) /\
-            (<<GET_FROM_ARM: exists val' ftid,
-                Memory.get_msg fts mem_arm = Some (Msg.mk (Zpos loc) val' ftid)>>) /\
+            (<<GET_ARM: Memory.get_msg tts mem_arm = Some (Msg.mk (Zpos loc) tval tid)>>) /\
+            (<<GET_FROM_ARM: exists fval ftid,
+                Memory.get_msg fts mem_arm = Some (Msg.mk (Zpos loc) fval ftid)>>) /\
+            (<<LATEST: Memory.latest (Zpos loc) fts tts mem_arm>>))
+        (MEM_SOUND: forall loc from to val_ps released na
+                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.message val_ps released na)),
+          exists fts tts tval ttid,
+            (<<TO: to = ntt tts>>) /\
+            (<<FROM: from = ntt fts>>) /\
+            (<<GET_ARM: Memory.get_msg tts mem_arm = Some (Msg.mk (Zpos loc) tval ttid)>>) /\
+            (<<GET_FROM_ARM: exists fval ftid,
+                Memory.get_msg fts mem_arm = Some (Msg.mk (Zpos loc) fval ftid)>>) /\
             (<<LATEST: Memory.latest (Zpos loc) fts tts mem_arm>>) /\
-            (<<VAL: sim_val val_ps val_arm>>))
+            (<<VAL: sim_val val_ps tval>>))
         (MEM_COMPLETE: forall loc ts val_arm tid'
                               (TS: le ts n)
                               (GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk loc val_arm tid')),
@@ -171,51 +181,51 @@ Module PStoRMW.
             (<<LOC: loc = Zpos loc'>>) /\
             (<<GET_PS: Memory.get loc' (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
             (<<VAL: sim_val val_ps val_arm>>) /\
-            (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(TView.rel) loc'))>>))
+            (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc'))>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
   .
 
   Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (th_ps: Thread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
+    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
     | sim_thread_intro
         eu1 eu2
         (STEPS1: rtc (RMWExecUnit.state_step tid) eu eu1)
-        (SIM_STATE: sim_state (Thread.state th_ps) (RMWExecUnit.state eu1))
-        (SIM_TVIEW: sim_tview (PSLocal.tview (Thread.local th_ps)) (RMWExecUnit.local eu1))
+        (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu1))
+        (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu1))
         (SIM_MEM: sim_memory tid n
-                    (Thread.local th_ps) (Global.memory (Thread.global th_ps))
+                    (PSThread.local th_ps) (PSGlobal.memory (PSThread.global th_ps))
                     (Local.promises (RMWExecUnit.local eu1)) (RMWExecUnit.mem eu1))
         (STEPS2: if after_sc
-                 then rtc (RMWExecUnit.state_step_dmbsy (S n) tid) eu1 eu2
-                 else rtc (RMWExecUnit.state_step_dmbsy n tid) eu1 eu2)
+                 then rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu2
+                 else rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu2)
         (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
   .
 
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (gl_ps: Global.t) (mem_arm: Memory.t):
+    (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
     forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
            (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
     | sim_thread_sl_intro
         st_ps lc_ps st_arm lc_arm
         (SIM_THREAD: sim_thread tid n after_sc
-                       (Thread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
+                       (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
       sim_thread_sl tid n after_sc gl_ps mem_arm
         (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
   .
 
-  Variant sim (n: Time.t) (c: Configuration.t) (m: RMWMachine.t): Prop :=
+  Variant sim (n: Time.t) (c: PSConfiguration.t) (m: RMWMachine.t): Prop :=
     | sim_intro
         m1
         (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) m m1)
         (SIM_THREADS:
           forall tid,
             opt_rel
-              (sim_thread_sl tid n true c.(Configuration.global) m.(RMWMachine.mem))
-              (IdentMap.find tid c.(Configuration.threads))
+              (sim_thread_sl tid n true c.(PSConfiguration.global) m.(RMWMachine.mem))
+              (IdentMap.find tid c.(PSConfiguration.threads))
               (IdMap.find tid m.(RMWMachine.tpool)))
         (SIM_SC: forall loc,
-            PSTime.le (c.(Configuration.global).(Global.sc) loc) (ntt n))
+            PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
   .
 End PStoRMW.

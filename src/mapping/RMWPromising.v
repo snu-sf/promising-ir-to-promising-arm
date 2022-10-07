@@ -183,11 +183,41 @@ Section RMWExecUnit.
   | state_step_dmbsy_intro
       e
       (STEP: state_step0 tid e e eu1 eu2)
+      (DMBSY: is_dmbsy e)
+      (VIEW: (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = n)
+  .
+  #[local]
+  Hint Constructors state_step_dmbsy: core.
+
+  Inductive state_step_dmbsy_exact (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  | state_step_dmbsy_exact_intro
+      e
+      (STEP: state_step0 tid e e eu1 eu2)
+      (DMBSY: is_dmbsy e ->
+              (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = n)
+  .
+  #[local]
+  Hint Constructors state_step_dmbsy_exact: core.
+
+  Inductive state_step_dmbsy_under (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  | state_step_dmbsy_under_intro
+      e
+      (STEP: state_step0 tid e e eu1 eu2)
+      (DMBSY: is_dmbsy e -> le eu1.(local).(Local.vro).(View.ts) n /\
+                            le eu1.(local).(Local.vwo).(View.ts) n)
+  .
+  #[local]
+  Hint Constructors state_step_dmbsy_under: core.
+
+  Inductive state_step_dmbsy_over (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  | state_step_dmbsy_over_intro
+      e
+      (STEP: state_step0 tid e e eu1 eu2)
       (DMBSY: is_dmbsy e -> le n eu1.(local).(Local.vro).(View.ts) /\
                             le n eu1.(local).(Local.vwo).(View.ts))
   .
   #[local]
-  Hint Constructors state_step_dmbsy: core.
+  Hint Constructors state_step_dmbsy_over: core.
 
   Inductive promise_step (tid:Id.t) (eu1 eu2:t): Prop :=
   | promise_step_intro
