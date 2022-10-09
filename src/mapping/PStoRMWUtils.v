@@ -121,5 +121,23 @@ Section DMBSY.
       (<<STEP_DMBSY: RMWExecUnit.state_step_dmbsy n tid eu2 eu3>>) /\
       (<<STEPS_DMBSY2: rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu3 eu4>>).
   Proof.
-  Admitted.
+    induction STEPS; eauto. des.
+    - exploit RMWExecUnit.state_step_dmbsy_over_S; eauto. i. des.
+      + right. esplits; try exact x1; eauto.
+      + left. econs 2; eauto.
+    - right. esplits; try exact STEP_DMBSY; eauto. econs 2; eauto.
+      inv H1. econs; eauto. i.
+      exploit DMBSY; eauto. i.
+      inv x1; ss. exfalso.
+      exploit RMWExecUnit.state_step0_incr; try exact STEP. i.
+      exploit RMWExecUnit.rtc_state_step_incr;
+        try eapply rtc_mon; try exact STEPS_DMBSY1.
+      { i. inv H4. econs. eauto. }
+      i. rewrite x2 in x1. inv x1. inv LC.
+      inv STEP_DMBSY.
+      exploit (join_le (A:=Time.t)); [apply VRO|apply VWO|].
+      unfold join in H2, H3.
+      rewrite <- H2. i.
+      rewrite H3 in x1. nia.
+  Qed.
 End DMBSY.

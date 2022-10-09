@@ -1,4 +1,4 @@
-Require Import NArith.
+ Require Import NArith.
 Require Import PArith.
 Require Import ZArith.
 Require Import Lia.
@@ -18,7 +18,6 @@ From PromisingIR Require Import Time.
 From PromisingIR Require Import View.
 From PromisingIR Require Import BoolMap.
 From PromisingIR Require Import Promises.
-From PromisingIR Require Import Reserves.
 From PromisingIR Require Import Cell.
 From PromisingIR Require Import Memory.
 From PromisingIR Require Import TView.
@@ -125,6 +124,7 @@ Module PStoRMW.
 
   Variant sim_tview (tview: PSTView.t) (lc_arm: Local.t (A:=unit)): Prop :=
     | sim_tview_intro
+        (VNEW: le lc_arm.(Local.vrn) lc_arm.(Local.vwn))
         (REL: forall loc loc',
             PSTime.le
               ((tview.(PSTView.rel) loc).(View.rlx) loc')
@@ -135,7 +135,7 @@ Module PStoRMW.
               (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
         (ACQ: forall loc,
             PSTime.le
-              (tview.(PSTView.cur).(View.rlx) loc)
+              (tview.(PSTView.acq).(View.rlx) loc)
               (ntt (View.ts (join lc_arm.(Local.vrn) (lc_arm.(Local.coh) (Zpos loc))))))
         (OLD: forall loc, le (lc_arm.(Local.coh) loc) (join lc_arm.(Local.vro) lc_arm.(Local.vwo)))
         (FWD: forall loc,
@@ -144,7 +144,7 @@ Module PStoRMW.
   #[export] Hint Constructors sim_tview: core.
 
   Variant sim_memory (tid: Ident.t) (n: Time.t)
-    (lc_ps: PSLocal.t) (mem_ps: PSMemory.t)
+    (lc_ps: PSLocal.t) (gprm_ps: BoolMap.t) (mem_ps: PSMemory.t)
     (prm_arm: Promises.t) (mem_arm: Memory.t): Prop :=
     | sim_memory_intro
         (PRM_SOUND: forall loc (PROMISED: lc_ps.(PSLocal.promises) loc = true),
@@ -177,11 +177,13 @@ Module PStoRMW.
         (MEM_COMPLETE: forall loc ts val_arm tid'
                               (TS: le ts n)
                               (GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk loc val_arm tid')),
-          exists loc' from val_ps released na,
-            (<<LOC: loc = Zpos loc'>>) /\
-            (<<GET_PS: Memory.get loc' (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
-            (<<VAL: sim_val val_ps val_arm>>) /\
-            (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc'))>>))
+          exists loc_ps,
+            (<<LOC: loc = Zpos loc_ps>>) /\
+            (<<PROMISED: gprm_ps loc_ps = true>>) \/
+            exists from val_ps released na,
+              (<<GET_PS: Memory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
+              (<<VAL: sim_val val_ps val_arm>>) /\
+              (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
@@ -195,8 +197,10 @@ Module PStoRMW.
         (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu1))
         (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu1))
         (SIM_MEM: sim_memory tid n
-                    (PSThread.local th_ps) (PSGlobal.memory (PSThread.global th_ps))
-                    (Local.promises (RMWExecUnit.local eu1)) (RMWExecUnit.mem eu1))
+                             (PSThread.local th_ps)
+                             (PSGlobal.promises (PSThread.global th_ps))
+                             (PSGlobal.memory (PSThread.global th_ps))
+                             (Local.promises (RMWExecUnit.local eu1)) (RMWExecUnit.mem eu1))
         (STEPS2: if after_sc
                  then rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu2
                  else rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu2)

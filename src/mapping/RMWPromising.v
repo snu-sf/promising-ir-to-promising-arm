@@ -203,8 +203,8 @@ Section RMWExecUnit.
   | state_step_dmbsy_under_intro
       e
       (STEP: state_step0 tid e e eu1 eu2)
-      (DMBSY: is_dmbsy e -> le eu1.(local).(Local.vro).(View.ts) n /\
-                            le eu1.(local).(Local.vwo).(View.ts) n)
+      (DMBSY: is_dmbsy e ->
+              le (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) n)
   .
   #[local]
   Hint Constructors state_step_dmbsy_under: core.
@@ -213,11 +213,25 @@ Section RMWExecUnit.
   | state_step_dmbsy_over_intro
       e
       (STEP: state_step0 tid e e eu1 eu2)
-      (DMBSY: is_dmbsy e -> le n eu1.(local).(Local.vro).(View.ts) /\
-                            le n eu1.(local).(Local.vwo).(View.ts))
+      (DMBSY: is_dmbsy e ->
+              le n (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts))
   .
   #[local]
   Hint Constructors state_step_dmbsy_over: core.
+
+  Lemma state_step_dmbsy_over_S
+        n tid eu1 eu2
+        (STEP: state_step_dmbsy_over n tid eu1 eu2):
+    state_step_dmbsy n tid eu1 eu2 \/
+    state_step_dmbsy_over (S n) tid eu1 eu2.
+  Proof.
+    inv STEP. destruct (is_dmbsy e) eqn:X.
+    - exploit DMBSY; eauto. i. inv x0.
+      + left. econs; eauto.
+      + right. econs; eauto. i. ss.
+        rewrite <- H1. unfold le. nia.
+    - right. econs; eauto. i. congr.
+  Qed.
 
   Inductive promise_step (tid:Id.t) (eu1 eu2:t): Prop :=
   | promise_step_intro
@@ -398,6 +412,24 @@ Section RMWExecUnit.
     inv STEP.
     - eapply state_step_incr. eauto.
     - eapply promise_step_incr. eauto.
+  Qed.
+
+  Lemma rtc_state_step_incr
+        tid eu1 eu2
+        (STEPS: rtc (state_step tid) eu1 eu2):
+    le eu1 eu2.
+  Proof.
+    induction STEPS; try refl.
+    etrans; eauto using state_step_incr.
+  Qed.
+
+  Lemma rtc_step_incr
+        tid eu1 eu2
+        (STEPS: rtc (step tid) eu1 eu2):
+    le eu1 eu2.
+  Proof.
+    induction STEPS; try refl.
+    etrans; eauto using step_incr.
   Qed.
 
   Definition is_terminal (eu: t): Prop :=
