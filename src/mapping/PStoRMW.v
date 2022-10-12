@@ -1,4 +1,4 @@
- Require Import NArith.
+Require Import NArith.
 Require Import PArith.
 Require Import ZArith.
 Require Import Lia.
@@ -148,42 +148,43 @@ Module PStoRMW.
     (prm_arm: Promises.t) (mem_arm: Memory.t): Prop :=
     | sim_memory_intro
         (PRM_SOUND: forall loc (PROMISED: lc_ps.(PSLocal.promises) loc = true),
-          exists ts msg,
+          exists ts msg_arm from,
             (<<LE: le ts n>>) /\
             (<<PROMISED_ARM: Promises.lookup ts prm_arm>>) /\
-            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg>>) /\
-            (<<TID: msg.(Msg.tid) = tid>>) /\
-            (<<GET_PS: Memory.get loc (ntt ts) mem_ps = None>>))
+            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
+            (<<TID: msg_arm.(Msg.tid) = tid>>) /\
+            (<<RESERVED: Memory.get loc (ntt ts) (PSLocal.reserves lc_ps) = Some (from, Message.reserve)>>))
         (RSV_SOUND: forall loc from to
                            (RESERVED: Memory.get loc to (PSLocal.reserves lc_ps) = Some (from, Message.reserve)),
-          exists fts tts tval,
-            (<<LE: le tts n>>) /\
-            (<<TO: to = ntt tts>>) /\
-            (<<FROM: from = ntt fts>>) /\
-            (<<GET_ARM: Memory.get_msg tts mem_arm = Some (Msg.mk (Zpos loc) tval tid)>>) /\
-            (<<GET_FROM_ARM: exists fval ftid,
-                Memory.get_msg fts mem_arm = Some (Msg.mk (Zpos loc) fval ftid)>>) /\
-            (<<LATEST: Memory.latest (Zpos loc) fts tts mem_arm>>))
-        (MEM_SOUND: forall loc from to val_ps released na
-                           (GET_PS: PSMemory.get loc to mem_ps = Some (from, Message.message val_ps released na)),
-          exists fts tts tval ttid,
-            (<<TO: to = ntt tts>>) /\
-            (<<FROM: from = ntt fts>>) /\
-            (<<GET_ARM: Memory.get_msg tts mem_arm = Some (Msg.mk (Zpos loc) tval ttid)>>) /\
-            (<<GET_FROM_ARM: exists fval ftid,
-                Memory.get_msg fts mem_arm = Some (Msg.mk (Zpos loc) fval ftid)>>) /\
-            (<<LATEST: Memory.latest (Zpos loc) fts tts mem_arm>>) /\
-            (<<VAL: sim_val val_ps tval>>))
-        (MEM_COMPLETE: forall loc ts val_arm tid'
+          exists ts msg_arm,
+            (<<LE: le ts n>>) /\
+            (<<TO: to = ntt ts>>) /\
+            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
+            (<<TID: msg_arm.(Msg.tid) = tid>>) /\
+            (<<PROMISED: lc_ps.(PSLocal.promises) loc = true>>))
+        (MEM_SOUND: forall loc_ps from to msg_ps
+                           (GET_PS: PSMemory.get loc_ps to mem_ps = Some (from, msg_ps)),
+          exists ts msg_arm,
+            (<<TO: to = ntt ts>>) /\
+            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
+            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
+        (MEM_COMPLETE: forall ts msg_arm
                               (TS: le ts n)
-                              (GET_ARM: Memory.get_msg ts mem_arm = Some (Msg.mk loc val_arm tid')),
-          exists loc_ps,
-            (<<LOC: loc = Zpos loc_ps>>) /\
-            (<<PROMISED: gprm_ps loc_ps = true>>) \/
-            exists from val_ps released na,
-              (<<GET_PS: Memory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
-              (<<VAL: sim_val val_ps val_arm>>) /\
-              (<<MSG_FWD: PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
+                              (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
+          exists loc_ps from msg_ps fts,
+            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+            (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, msg_ps)>>) /\
+            (<<FROM: from = ntt fts>>) /\
+            (<<GET_FROM_ARM: exists fval ftid,
+                Memory.get_msg fts mem_arm = Some (Msg.mk msg_arm.(Msg.loc) fval ftid)>>) /\
+            (<<LATEST: Memory.latest msg_arm.(Msg.loc) fts ts mem_arm>>) /\
+            ((<<RESERVED: msg_ps = Message.reserve>>) /\
+             (<<PROMISED: gprm_ps loc_ps = true>>)) \/
+            exists val_ps released na,
+              (<<MSG: msg_ps = Message.message val_ps released na>>) /\
+              (<<VAL: sim_val val_ps msg_arm.(Msg.val)>>) /\
+              (<<MSG_FWD: msg_arm.(Msg.tid) = tid ->
+                          PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
