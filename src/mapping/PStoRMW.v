@@ -54,6 +54,19 @@ Fixpoint ps_to_rmw_expr (e: Expr.t): exprT :=
   | Expr.op2 op e1 e2 => expr_op2 op (ps_to_rmw_expr e1) (ps_to_rmw_expr e2)
   end.
 
+Definition ps_to_rmw_ordr (ord: Ordering.t): OrdR.t :=
+  if Ordering.le Ordering.acqrel ord
+  then OrdR.acquire_pc
+  else OrdR.pln.
+
+Definition ps_to_rmw_ordw (ord: Ordering.t): OrdW.t :=
+  if Ordering.le Ordering.acqrel ord
+  then OrdW.release_pc
+  else
+    if Ordering.le Ordering.plain ord
+    then OrdW.srlx
+    else OrdW.pln.
+
 Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
   match i with
   | Instr.skip =>
@@ -61,21 +74,12 @@ Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
   | Instr.assign reg e =>
       rmw_instr_assign reg (ps_to_rmw_expr e)
   | Instr.load reg loc ord =>
-      rmw_instr_load
-        (if Ordering.le Ordering.acqrel ord then OrdR.acquire_pc else OrdR.pln)
-        reg (expr_const (Zpos loc))
+      rmw_instr_load (ps_to_rmw_ordr ord) reg (expr_const (Zpos loc))
   | Instr.store loc e ord =>
-      rmw_instr_store
-        (if Ordering.le Ordering.acqrel ord
-         then OrdW.release_pc
-         else if Ordering.le Ordering.plain ord then OrdW.srlx else OrdW.pln)
-        (expr_const (Zpos loc)) (ps_to_rmw_expr e)
+      rmw_instr_store (ps_to_rmw_ordw ord) (expr_const (Zpos loc)) (ps_to_rmw_expr e)
   | Instr.fadd reg loc e ordr ordw =>
       rmw_instr_fadd
-        (if Ordering.le Ordering.acqrel ordr then OrdR.acquire_pc else OrdR.pln)
-        (if Ordering.le Ordering.acqrel ordw
-         then OrdW.release_pc
-         else if Ordering.le Ordering.plain ordw then OrdW.srlx else OrdW.pln)
+        (ps_to_rmw_ordr ordr) (ps_to_rmw_ordw ordw)
         reg (expr_const (Zpos loc)) (ps_to_rmw_expr e)
   | Instr.fence ordr ordw =>
       rmw_instr_barrier
@@ -233,4 +237,30 @@ Module PStoRMW.
         (SIM_SC: forall loc,
             PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
   .
+
+  Lemma sim_read_step
+        tid n
+        lc1_ps gl1_ps
+        ord loc
+        ex ord_arm (vloc: ValA.t (A:=View.t (A:=unit))) res ts lc1_arm mem_arm lc2_arm
+        (TVIEW1: sim_tview (PSLocal.tview lc1_ps) lc1_arm)
+        (MEM1: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) (Local.promises lc1_arm) mem_arm)
+        (LC_WF1_PS: PSLocal.wf lc1_ps gl1_ps)
+        (GL_WF1_PS: PSGlobal.wf gl1_ps)
+        (ORD: ord_arm = ps_to_rmw_ordr ord)
+        (LOC: vloc.(ValA.val) = Zpos loc)
+        (STEP: Local.read ex ord_arm vloc res ts lc1_arm mem_arm lc2_arm):
+    (exists val released lc2_ps,
+        (<<STEP_PS: PSLocal.read_step lc1_ps gl1_ps loc (ntt ts) val released ord lc2_ps>>) /\
+        (<<VAL: sim_val val res.(ValA.val)>>) /\
+        (<<TVIEW2: sim_tview (PSLocal.tview lc2_ps) lc2_arm>>) /\
+        (<<MEM2: sim_memory tid n lc2_ps (Global.promises gl1_ps) (Global.memory gl1_ps) (Local.promises lc2_arm) mem_arm>>)) \/
+    (exists val,
+        (<<STEP_PS: PSLocal.racy_read_step lc1_ps gl1_ps loc None val ord>>) /\
+        (<<VAL: sim_val val res.(ValA.val)>>) /\
+        (<<TVIEW2: sim_tview (PSLocal.tview lc1_ps) lc2_arm>>) /\
+        (<<MEM2: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) (Local.promises lc2_arm) mem_arm>>)).
+  Proof.
+    inv STEP. ss.
+  Admitted.
 End PStoRMW.
