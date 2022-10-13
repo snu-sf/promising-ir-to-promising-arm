@@ -151,44 +151,46 @@ Module PStoRMW.
     (lc_ps: PSLocal.t) (gprm_ps: BoolMap.t) (mem_ps: PSMemory.t)
     (prm_arm: Promises.t) (mem_arm: Memory.t): Prop :=
     | sim_memory_intro
-        (PRM_SOUND: forall loc (PROMISED: lc_ps.(PSLocal.promises) loc = true),
-          exists ts msg_arm from,
-            (<<LE: le ts n>>) /\
-            (<<PROMISED_ARM: Promises.lookup ts prm_arm>>) /\
+        (PRM_SOUND: forall ts (LE: le ts n) (PROMISED_ARM: Promises.lookup ts prm_arm),
+          exists msg_arm loc_ps from,
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
             (<<TID: msg_arm.(Msg.tid) = tid>>) /\
-            (<<RESERVED: Memory.get loc (ntt ts) (PSLocal.reserves lc_ps) = Some (from, Message.reserve)>>))
-        (RSV_SOUND: forall loc from to
-                           (RESERVED: Memory.get loc to (PSLocal.reserves lc_ps) = Some (from, Message.reserve)),
-          exists ts msg_arm,
+            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+            (<<PROMISED_PS: lc_ps.(PSLocal.promises) loc_ps = true>>) /\
+            (<<RESERVED: Memory.get loc_ps (ntt ts) (PSLocal.reserves lc_ps) = Some (from, Message.reserve)>>))
+        (PRM_COMPLETE: forall loc (PROMISED_PS: lc_ps.(PSLocal.promises) loc = true),
+          exists ts,
             (<<LE: le ts n>>) /\
-            (<<TO: to = ntt ts>>) /\
-            (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
-            (<<TID: msg_arm.(Msg.tid) = tid>>) /\
-            (<<PROMISED: lc_ps.(PSLocal.promises) loc = true>>))
-        (MEM_SOUND: forall loc_ps from to msg_ps
-                           (GET_PS: PSMemory.get loc_ps to mem_ps = Some (from, msg_ps)),
+            (<<PROMISED_ARM: Promises.lookup ts prm_arm>>))
+        (MEM_SOUND: forall ts msg_arm
+                           (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
+          exists loc_ps from msg_ps,
+            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+            (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, msg_ps)>>) /\
+            (__guard__ (
+               (<<FROM: from = PSTime.bot>>) \/
+               exists fts fval ftid,
+                 (<<FROM: from = ntt fts>>) /\
+                 (<<GET_FROM_ARM: Memory.get_msg fts mem_arm = Some (Msg.mk msg_arm.(Msg.loc) fval ftid)>>) /\
+                 (<<LATEST: Memory.latest msg_arm.(Msg.loc) fts ts mem_arm>>))) /\
+            (__guard__ (
+               (<<RESERVED: msg_ps = Message.reserve>>) /\
+               (<<PROMISED: le ts n ->
+                            (<<GPROMISED: gprm_ps loc_ps = true>>) /\
+                            (<<PROMISED_PS: lc_ps.(PSLocal.promises) loc_ps <-> msg_arm.(Msg.tid) = tid>>) /\
+                            (<<PROMISED_ARM: Promises.lookup ts prm_arm <-> msg_arm.(Msg.tid) = tid>>)>>) \/
+               exists val_ps released na,
+                 (<<MSG: msg_ps = Message.message val_ps released na>>) /\
+                 (<<VAL: sim_val val_ps msg_arm.(Msg.val)>>) /\
+                 (<<MSG_FWD: msg_arm.(Msg.tid) = tid ->
+                             PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))))
+        (MEM_COMPLETE: forall loc_ps from to msg_ps
+                              (TO: PSTime.lt PSTime.bot to)
+                              (GET_PS: PSMemory.get loc_ps to mem_ps = Some (from, msg_ps)),
           exists ts msg_arm,
             (<<TO: to = ntt ts>>) /\
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
             (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
-        (MEM_COMPLETE: forall ts msg_arm
-                              (TS: le ts n)
-                              (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
-          exists loc_ps from msg_ps fts,
-            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
-            (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, msg_ps)>>) /\
-            (<<FROM: from = ntt fts>>) /\
-            (<<GET_FROM_ARM: exists fval ftid,
-                Memory.get_msg fts mem_arm = Some (Msg.mk msg_arm.(Msg.loc) fval ftid)>>) /\
-            (<<LATEST: Memory.latest msg_arm.(Msg.loc) fts ts mem_arm>>) /\
-            ((<<RESERVED: msg_ps = Message.reserve>>) /\
-             (<<PROMISED: gprm_ps loc_ps = true>>)) \/
-            exists val_ps released na,
-              (<<MSG: msg_ps = Message.message val_ps released na>>) /\
-              (<<VAL: sim_val val_ps msg_arm.(Msg.val)>>) /\
-              (<<MSG_FWD: msg_arm.(Msg.tid) = tid ->
-                          PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
@@ -238,6 +240,57 @@ Module PStoRMW.
             PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
   .
 
+  Lemma sim_tview_le
+        tview lc1_arm lc2_arm
+        (SIM: sim_tview tview lc1_arm)
+        (LE: Local.le lc1_arm lc2_arm)
+        (VNEW2: le lc2_arm.(Local.vrn) lc2_arm.(Local.vwn))
+        (OLD2: forall loc,
+            le (lc2_arm.(Local.coh) loc) (join lc2_arm.(Local.vro) lc2_arm.(Local.vwo)))
+        (FWD2: forall loc,
+            le (lc2_arm.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc2_arm.(Local.coh) loc))):
+    sim_tview tview lc2_arm.
+  Proof.
+    inv SIM. econs; ss; i.
+    - etrans; eauto. apply le_ntt.
+      eapply join_le; try apply Time.order; try apply LE.
+      unfold ifc. condtac; ss. apply LE.
+    - etrans; eauto. apply le_ntt.
+      eapply join_le; try apply Time.order; try apply LE.
+    - etrans; eauto. apply le_ntt.
+      eapply join_le; try apply Time.order; try apply LE.
+  Qed.
+
+  Lemma sim_memory_read_arm
+        tid n lc_ps gprm_ps mem_ps prm_arm mem_arm
+        loc loc_ps ts val_arm
+        (MEM: sim_memory tid n lc_ps gprm_ps mem_ps prm_arm mem_arm)
+        (INHABITED: PSMemory.inhabited mem_ps)
+        (LE: le ts n)
+        (LOC: loc = Zpos loc_ps)
+        (READ: Memory.read loc ts mem_arm = Some val_arm):
+    (<<PROMISED_ARM: Promises.lookup ts prm_arm>>) \/
+    (<<GPROMISED: gprm_ps loc_ps = true>>) /\
+    (<<PROMISED: lc_ps.(PSLocal.promises) loc_ps = false>>) \/
+    exists from val released na,
+      (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val released na)>>) /\
+      (<<VAL: sim_val val val_arm>>).
+  Proof.
+    unfold Memory.read in *. destruct ts; ss.
+    - inv READ. right. right. esplits; eauto.
+    - des_ifs. destruct t. ss. inversion e. subst.
+      inv MEM. exploit MEM_SOUND; eauto.
+      { instantiate (2:=S ts). eauto. }
+      s. i. des. inv LOC.
+      unguardH x1. des; subst.
+      + exploit PROMISED; ss. i. des.
+        destruct (Id.eq_dec tid0 tid); subst; auto.
+        right. left. splits; ss.
+        destruct (PSLocal.promises lc_ps loc_ps0) eqn:X; ss.
+        exploit PROMISED_PS; ss.
+      + right. right. esplits; eauto.
+  Qed.
+
   Lemma sim_read_step
         tid n
         lc1_ps gl1_ps
@@ -249,7 +302,9 @@ Module PStoRMW.
         (GL_WF1_PS: PSGlobal.wf gl1_ps)
         (ORD: ord_arm = ps_to_rmw_ordr ord)
         (LOC: vloc.(ValA.val) = Zpos loc)
+        (LE: le ts n)
         (STEP: Local.read ex ord_arm vloc res ts lc1_arm mem_arm lc2_arm):
+    (<<PROMISED_ARM: Promises.lookup ts (Local.promises lc1_arm)>>) \/
     (exists val released lc2_ps,
         (<<STEP_PS: PSLocal.read_step lc1_ps gl1_ps loc (ntt ts) val released ord lc2_ps>>) /\
         (<<VAL: sim_val val res.(ValA.val)>>) /\
@@ -262,5 +317,33 @@ Module PStoRMW.
         (<<MEM2: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) (Local.promises lc2_arm) mem_arm>>)).
   Proof.
     inv STEP. ss.
+    exploit sim_memory_read_arm; eauto; try apply GL_WF1_PS. i. des; auto.
+    { (* race with a promise *)
+      right. right. esplits; eauto.
+      econs; s; i.
+      - eapply join_le; try apply View.order; try apply TVIEW1. refl.
+      - etrans; [apply TVIEW1|]. apply le_ntt.
+        admit.
+      - admit.
+      - admit.
+      - admit.
+      - etrans; [apply TVIEW1|].
+        admit.
+    }
+
+    { (* normal read *)
+      right. left. esplits.
+      - econs; eauto; try refl.
+        admit.
+      - ss.
+      - econs; s; i.
+        + admit.
+        + admit.
+        + admit.
+        + admit.
+        + admit.
+        + admit.
+      - inv MEM1. econs; s; eauto.
+    }
   Admitted.
 End PStoRMW.
