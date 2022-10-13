@@ -261,6 +261,48 @@ Module PStoRMW.
       eapply join_le; try apply Time.order; try apply LE.
   Qed.
 
+  Lemma sim_memory_latest_le
+        tid n lc_ps gprm_ps mem_ps prm_ps mem_arm
+        ts loc loc_ps view val ts_ps
+        (SIM: sim_memory tid n lc_ps gprm_ps mem_ps prm_ps mem_arm)
+        (LOC: loc = Zpos loc_ps)
+        (LATEST: Memory.latest loc ts view mem_arm)
+        (GET_ARM: Memory.read loc ts mem_arm = Some val)
+        (LE: PSTime.le ts_ps (ntt view))
+        (CLOSED: exists from msg,
+            PSMemory.get loc_ps ts_ps mem_ps = Some (from, msg)):
+    PSTime.le ts_ps (ntt ts).
+  Proof.
+    des. destruct (TimeFacts.le_lt_dec ts_ps PSTime.bot).
+    { etrans; eauto. apply PSTime.bot_spec. }
+    destruct (TimeFacts.le_lt_dec ts_ps (ntt ts)); ss.
+    inv SIM. exploit MEM_COMPLETE; eauto. i. des. subst.
+    clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
+    unfold Memory.get_msg in *. destruct ts0; ss.
+    exploit LATEST; try exact GET_ARM0; ss.
+    - apply ntt_lt. ss.
+    - apply ntt_le. ss.
+  Qed.
+
+  Lemma sim_tview_readable
+        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
+        loc loc_ps ts view_pre
+        ord
+        (TVIEW: sim_tview lc_ps.(PSLocal.tview) lc_arm)
+        (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm.(Local.promises) mem_arm)
+        (TVIEW_WF: TView.wf lc_ps.(PSLocal.tview))
+        (LOC: loc = Zpos loc_ps)
+        (VIEW_PRE: le lc_arm.(Local.vrn) view_pre)
+        (COH: Memory.latest loc ts (lc_arm.(Local.coh) loc).(View.ts) mem_arm)
+        (LATEST: Memory.latest loc ts view_pre.(View.ts) mem_arm):
+    PSTView.readable (PSTView.cur lc_ps.(PSLocal.tview)) loc_ps (ntt ts) ord.
+  Proof.
+    cut (PSTime.le (View.rlx (PSTView.cur (PSLocal.tview lc_ps)) loc_ps) (ntt ts)).
+    { i. econs; ss. etrans; eauto. apply TVIEW_WF. }
+    inv TVIEW. clear REL ACQ OLD FWD.
+    specialize (CUR loc_ps). ss.
+  Admitted.
+
   Lemma sim_memory_read_arm
         tid n lc_ps gprm_ps mem_ps prm_arm mem_arm
         loc loc_ps ts val_arm

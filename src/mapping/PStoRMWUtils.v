@@ -53,7 +53,15 @@ Module PSConfiguration := PromisingIR.Configuration.Configuration.
 
 (* timestamp conversion between PS and ARM *)
 
-Fixpoint ntt (n: nat): PSTime.t :=
+(* Global Program Instance nat_order: orderC Nat.max 0. *)
+(* Next Obligation. unfold join. lia. Qed. *)
+(* Next Obligation. unfold join. lia. Qed. *)
+(* Next Obligation. eauto using Max.max_assoc. Qed. *)
+(* Next Obligation. eauto using Max.max_comm. Qed. *)
+(* Next Obligation. unfold join. lia. Qed. *)
+(* Next Obligation. unfold bot. lia. Qed. *)
+
+Fixpoint ntt (n: Time.t): PSTime.t :=
   match n with
   | O => PSTime.bot
   | S n => PSTime.incr (ntt n)
@@ -104,6 +112,24 @@ Proof.
   apply le_antisym.
   - apply ntt_le. rewrite EQ. refl.
   - apply ntt_le. rewrite EQ. refl.
+Qed.
+
+Lemma ntt_join m n:
+  PSTime.join (ntt m) (ntt n) = ntt (join m n).
+Proof.
+  apply TimeFacts.antisym.
+  - apply PSTime.join_spec; try apply le_ntt.
+    + apply join_l.
+    + apply join_r.
+  - destruct (Nat.le_ge_cases m n).
+    + etrans; [|apply PSTime.join_r].
+      apply le_ntt.
+      rewrite (@le_join_r Time.t Time.eq Time.le); eauto.
+      apply Time.order.
+    + etrans; [|apply PSTime.join_l].
+      apply le_ntt.
+      rewrite (@le_join_l Time.t Time.eq Time.le); eauto.
+      apply Time.order.
 Qed.
 
 
