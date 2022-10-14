@@ -123,13 +123,9 @@ Proof.
     + apply join_r.
   - destruct (Nat.le_ge_cases m n).
     + etrans; [|apply PSTime.join_r].
-      apply le_ntt.
-      rewrite (@le_join_r Time.t Time.eq Time.le); eauto.
-      apply Time.order.
+      apply le_ntt. rewrite max_r; ss.
     + etrans; [|apply PSTime.join_l].
-      apply le_ntt.
-      rewrite (@le_join_l Time.t Time.eq Time.le); eauto.
-      apply Time.order.
+      apply le_ntt. rewrite max_l; ss.
 Qed.
 
 
