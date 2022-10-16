@@ -152,13 +152,13 @@ Module PStoRMW.
     (lc_ps: PSLocal.t) (gprm_ps: BoolMap.t) (mem_ps: PSMemory.t)
     (lc_arm: Local.t (A:=unit)) (mem_arm: Memory.t): Prop :=
     | sim_memory_intro
-        (PRM_SOUND: forall ts (LE: le ts n) (PROMISED_ARM: Promises.lookup ts lc_arm.(Local.promises)),
+        (PRM_SOUND: forall ts (PROMISED_ARM: Promises.lookup ts lc_arm.(Local.promises)),
           exists msg_arm loc_ps from,
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
             (<<TID: msg_arm.(Msg.tid) = tid>>) /\
             (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
-            (<<PROMISED_PS: lc_ps.(PSLocal.promises) loc_ps = true>>) /\
-            (<<RESERVED: Memory.get loc_ps (ntt ts) (PSLocal.reserves lc_ps) = Some (from, Message.reserve)>>))
+            (<<RESERVED: Memory.get loc_ps (ntt ts) (PSLocal.reserves lc_ps) = Some (from, Message.reserve)>>) /\
+            (<<PROMISED_PS: le ts n -> lc_ps.(PSLocal.promises) loc_ps = true>>))
         (PRM_COMPLETE: forall loc (PROMISED_PS: lc_ps.(PSLocal.promises) loc = true),
           exists ts,
             (<<LE: le ts n>>) /\
@@ -510,6 +510,26 @@ Module PStoRMW.
     }
   Qed.
 
+  Lemma sim_tview_writable
+        tview lc_arm
+        loc loc_ps ts view_pre
+        ord
+        (TVIEW: sim_tview tview lc_arm)
+        (LOC: loc = Zpos loc_ps)
+        (VIEW_PRE: le lc_arm.(Local.vwn) view_pre)
+        (COH: lt (lc_arm.(Local.coh) loc).(View.ts) ts)
+        (EXT: lt view_pre.(View.ts) ts):
+    PSTView.writable (PSTView.cur tview) loc_ps (ntt ts) ord.
+  Proof.
+    subst. econs.
+    eapply TimeFacts.le_lt_lt; [apply TVIEW|].
+    apply lt_ntt. ss.
+    apply Time.max_lub_lt; ss.
+    eapply Time.le_lt_trans; try exact EXT.
+    etrans; [|apply VIEW_PRE].
+    apply TVIEW.
+  Qed.
+
   Lemma sim_fulfill_step
         tid n
         lc1_ps gl1_ps
@@ -522,7 +542,7 @@ Module PStoRMW.
         (GL_WF1_PS: PSGlobal.wf gl1_ps)
         (ORD: ord_arm = ps_to_rmw_ordw ord)
         (LOC: vloc.(ValA.val) = Zpos loc)
-        (LE: le ts n)
+        (* (LE: le ts n) *)
         (RELEASEDM_WF: View.opt_wf releasedm)
         (STEP: Local.fulfill ex ord_arm vloc vval res ts tid view_pre lc1_arm mem_arm lc2_arm):
     exists from lc2_ps gl2_ps,
@@ -564,9 +584,19 @@ Module PStoRMW.
       exploit TViewFacts.write_future0; try apply LC_WF1_PS; try exact RELEASEDM_WF. s. i. des.
       apply WF_RELEASED.
     }
-    i. des. esplits.
+    i. des.
+
+    (** TODO
+        - only non-atomic writes are promised: add to the thread relation
+        - if ts <= n, then ord = na (otherwise, already written)
+        - fulfill when there is no remaining promise at loc
+    *)
+
+    esplits.
     { econs; eauto. s.
-      admit.
+      inv WRITABLE.
+      eapply sim_tview_writable; [..|exact COH|exact EXT]; eauto.
+      apply joins_le. right. right. right. left. ss.
     }
     { s. admit.
     }
