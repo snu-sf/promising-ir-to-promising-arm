@@ -115,17 +115,17 @@ Proof.
 Qed.
 
 Lemma ntt_join m n:
-  PSTime.join (ntt m) (ntt n) = ntt (join m n).
+  ntt (join m n) = PSTime.join (ntt m) (ntt n).
 Proof.
   apply TimeFacts.antisym.
-  - apply PSTime.join_spec; try apply le_ntt.
-    + apply join_l.
-    + apply join_r.
   - destruct (Nat.le_ge_cases m n).
     + etrans; [|apply PSTime.join_r].
       apply le_ntt. rewrite max_r; ss.
     + etrans; [|apply PSTime.join_l].
       apply le_ntt. rewrite max_l; ss.
+  - apply PSTime.join_spec; try apply le_ntt.
+    + apply join_l.
+    + apply join_r.
 Qed.
 
 
