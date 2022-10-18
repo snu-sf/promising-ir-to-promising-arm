@@ -4,6 +4,7 @@ Require Import ZArith.
 Require Import Lia.
 Require Import EquivDec.
 Require Import RelationClasses.
+Require Import Bool.
 
 From sflib Require Import sflib.
 From Paco Require Import paco.
@@ -67,6 +68,8 @@ Definition ps_to_rmw_ordw (ord: Ordering.t): OrdW.t :=
     if Ordering.le Ordering.plain ord
     then OrdW.srlx
     else OrdW.pln.
+
+Definition orr (a b: bool): bool := a || b.
 
 Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
   match i with
@@ -318,7 +321,7 @@ Module PStoRMW.
     - inv TVIEW_CLOSED. inv CUR0. specialize (RLX loc_ps). des. eauto.
   Qed.
 
-  Lemma sim_memory_read_arm
+  Lemma sim_memory_read
         tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
         loc loc_ps ts val_arm
         (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
@@ -371,7 +374,7 @@ Module PStoRMW.
     - right. ss.
   Qed.
 
-  Lemma sim_read_step
+  Lemma sim_read
         tid n
         lc1_ps gl1_ps
         ord loc
@@ -398,7 +401,7 @@ Module PStoRMW.
   Proof.
     exploit (Local.read_incr (A:=unit)); eauto. i.
     inv STEP.
-    exploit sim_memory_read_arm; eauto; try apply GL_WF1_PS. i. des; auto.
+    exploit sim_memory_read; eauto; try apply GL_WF1_PS. i. des; auto.
     { (* race with a promise *)
       ss. right. right.
       esplits; eauto; [|econs; ss; apply MEM1].
@@ -446,13 +449,13 @@ Module PStoRMW.
             destruct released; s; try apply PSTime.bot_spec.
             unfold FwdItem.read_view. condtac; ss.
             - apply andb_prop in X0. des.
-              rewrite Bool.negb_true_iff in X1.
+              rewrite negb_true_iff in X1.
               exploit REL_FWD.
               { destruct (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc)) == ts); ss. }
               condtac.
               + i. inv x2.
-                rewrite Bool.andb_true_l in X1.
-                apply Bool.orb_false_elim in X1. des.
+                rewrite andb_true_l in X1.
+                apply orb_false_elim in X1. des.
                 destruct ord; ss.
               + i. inv x2.
                 etrans; [apply LE0|].
@@ -490,7 +493,7 @@ Module PStoRMW.
             destruct released; s; try apply PSTime.bot_spec.
             unfold FwdItem.read_view. condtac; ss.
             - apply andb_prop in X0. des.
-              rewrite Bool.negb_true_iff in X1.
+              rewrite negb_true_iff in X1.
               exploit REL_FWD.
               { destruct (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc)) == ts); ss. }
               condtac.
@@ -593,7 +596,7 @@ Module PStoRMW.
       + right. esplits; eauto.
   Qed.
 
-  Lemma sim_fulfill_step
+  Lemma sim_fulfill
         tid n
         lc1_ps gl1_ps
         ord loc
@@ -882,4 +885,62 @@ Module PStoRMW.
       }
     }
   Qed.
+
+  (* TODO: SC fence case?
+     - sc <= join vro vwo?
+   *)
+  Lemma sim_dmb
+        tid n
+        lc1_ps gl1_ps lc1_arm mem_arm
+        ordr ordw
+        rr rw wr ww lc2_arm
+        (TVIEW1: sim_tview (PSLocal.tview lc1_ps) lc1_arm)
+        (MEM1: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) lc1_arm mem_arm)
+        (LC_WF1_PS: PSLocal.wf lc1_ps gl1_ps)
+        (GL_WF1_PS: PSGlobal.wf gl1_ps)
+        (RR: rr = (Ordering.le Ordering.acqrel ordr: bool) || Ordering.le Ordering.seqcst ordw)
+        (RW: rw = Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.acqrel ordw)
+        (WR: wr = Ordering.le Ordering.seqcst ordw)
+        (WW: ww = Ordering.le Ordering.acqrel ordw)
+        (STEP: Local.dmb rr rw wr ww lc1_arm lc2_arm):
+    exists lc2_ps gl2_ps,
+      (<<STEP_PS: PSLocal.fence_step lc1_ps gl1_ps ordr ordw lc2_ps gl2_ps>>) /\
+      (<<TVIEW2: sim_tview (PSLocal.tview lc2_ps) lc2_arm>>) /\
+      (<<MEM2: sim_memory tid n lc2_ps (Global.promises gl2_ps) (Global.memory gl2_ps) lc2_arm mem_arm>>).
+  Proof.
+    destruct lc1_ps as [tview1 prm1 rsv1].
+    destruct gl1_ps as [sc1 gprm1 mem1]. ss.
+    inv STEP. esplits.
+    { econs; eauto. s.
+      admit.
+    }
+    { s.
+      admit.
+    }
+    { inv MEM1. ss. econs; s; eauto. i.
+      exploit MEM_SOUND; eauto. i. des. esplits; eauto.
+      unguardH x0. des; [left|right]; ss. subst.
+      esplits; eauto. i.
+      exploit REL_FWD; eauto. condtac; ss; i.
+      - etrans; eauto. econs. apply PSView.join_l.
+      - etrans; eauto. econs. condtac; ss; try refl.
+        condtac; ss; cycle 1.
+        { condtac; ss; try apply LC_WF1_PS.
+          etrans; apply LC_WF1_PS.
+        }
+        unfold TView.write_fence_sc.
+        condtac; try by (destruct ordw; ss). s.
+        econs; s.
+        + etrans; [|apply TimeMap.join_r]. condtac; ss.
+          * etrans; [apply LC_WF1_PS|]. s.
+            etrans; [apply LC_WF1_PS|]. s.
+            apply LC_WF1_PS.
+          * etrans; [apply LC_WF1_PS|]. s.
+            apply LC_WF1_PS.
+        + etrans; [|apply TimeMap.join_r]. condtac; ss.
+          * etrans; [apply LC_WF1_PS|]. s.
+            apply LC_WF1_PS.
+          * apply LC_WF1_PS.
+    }
+  Admitted.
 End PStoRMW.
