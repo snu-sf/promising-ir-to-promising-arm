@@ -97,9 +97,9 @@ Section RMWLocal.
       (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1')
       (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'')
       (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
-  | step_isb
-      (EVENT: event = RMWEvent.barrier Barrier.isb)
-      (STEP: Local.isb lc1 lc2)
+  (* | step_isb *)
+  (*     (EVENT: event = RMWEvent.barrier Barrier.isb) *)
+  (*     (STEP: Local.isb lc1 lc2) *)
   | step_dmb
       rr rw wr ww
       (EVENT: event = RMWEvent.barrier (Barrier.dmb rr rw wr ww))
@@ -124,7 +124,7 @@ Section RMWLocal.
       hexploit Local.fulfill_incr; eauto. i.
       hexploit Local.control_incr; eauto. i.
       do 2 (etrans; eauto).
-    - eapply Local.isb_incr. eauto.
+    (* - eapply Local.isb_incr. eauto. *)
     - eapply Local.dmb_incr. eauto.
     - eapply Local.control_incr. eauto.
   Qed.
@@ -140,6 +140,132 @@ Section RMWLocal.
       apply Promises.unset_le.
     - inv LC. ss.
   Qed.
+
+  Lemma promise_promises_sound
+        loc val ts tid lc1 mem1 lc2 mem2
+        (STEP: Local.promise (A:=A) loc val ts tid lc1 mem1 lc2 mem2)
+        (SOUND: Promises.sound tid (Local.promises lc1) mem1):
+    Promises.sound tid (Local.promises lc2) mem2.
+  Proof.
+    inv STEP. inv MEM2. ss.
+    ii. revert LOOKUP. erewrite Promises.set_o. condtac; i.
+    - inversion e. subst.
+      unfold Memory.get_msg. ss.
+      rewrite nth_error_app2; try refl.
+      rewrite minus_diag. ss. eauto.
+    - exploit SOUND; eauto. i. des.
+      esplits; eauto.
+      eapply Memory.get_msg_mon; eauto.
+  Qed.
+
+  Lemma fulfill_promises_sound
+        ex ord vloc vval res ts tid view_pre lc1 mem lc2
+        (FULFILL: Local.fulfill ex ord vloc vval res ts tid view_pre lc1 mem lc2)
+        (SOUND: Promises.sound tid (Local.promises lc1) mem):
+    Promises.sound tid (Local.promises lc2) mem.
+  Proof.
+    inv FULFILL; ss.
+    eapply Promises.le_sound; eauto.
+    eapply Promises.unset_le.
+  Qed.
+
+  Lemma step_promises_sound
+        e tid mem lc1 lc2
+        (STEP: step e tid mem lc1 lc2)
+        (SOUND: Promises.sound tid (Local.promises lc1) mem):
+    Promises.sound tid (Local.promises lc2) mem.
+  Proof.
+    inv STEP; eauto; try by (inv STEP0; ss; eauto).
+    - eapply fulfill_promises_sound; eauto.
+    - inv STEP_READ. inv STEP_CONTROL. ss.
+      eapply fulfill_promises_sound; eauto.
+    - inv LC. ss.
+  Qed.
+
+  Variant wf (tid: Id.t) (lc: Local.t (A:=A)) (mem: Memory.t): Prop :=
+    | view_wf_intro
+        (COH: forall loc, le (lc.(Local.coh) loc) (join lc.(Local.vro) lc.(Local.vwo)))
+        (VRN: le lc.(Local.vrn) (join lc.(Local.vro) lc.(Local.vwo)))
+        (VWN: le lc.(Local.vwn) (join lc.(Local.vro) lc.(Local.vwo)))
+        (FWD: forall loc,
+            le (lc.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc.(Local.coh) loc)))
+        (PRM: Promises.sound tid (Local.promises lc) mem)
+  .
+
+  Lemma read_wf
+        tid
+        ex ord vloc res ts lc1 mem lc2
+        (READ: Local.read ex ord vloc res ts lc1 mem lc2)
+        (WF: wf tid lc1 mem):
+    wf tid lc2 mem.
+  Proof.
+    inv WF. inv READ. econs; ss; i.
+    - unfold fun_add. condtac.
+      + inversion e. subst. apply join_spec.
+        * etrans; [apply COH|].
+          eapply join_le; try apply View.order. refl.
+        * etrans; [|apply join_l]. apply join_r.
+      + etrans; [apply COH|].
+        eapply join_le; try apply View.order. refl.
+    - apply join_spec.
+      + etrans; eauto.
+        eapply join_le; try apply View.order. refl.
+      + unfold ifc. condtac; ss; try apply bot_spec.
+        etrans; [|apply join_l]. apply join_r.
+    - apply join_spec.
+      + etrans; eauto.
+        eapply join_le; try apply View.order. refl.
+      + unfold ifc. condtac; ss; try apply bot_spec.
+        etrans; [|apply join_l]. apply join_r.
+    - etrans; eauto.
+      unfold fun_add. condtac; ss.
+      rewrite e. apply join_l.
+  Qed.
+
+  Lemma fulfill_wf
+        ex ord vloc vval res ts tid view_pre lc1 mem lc2
+        (FULFILL: Local.fulfill ex ord vloc vval res ts tid view_pre lc1 mem lc2)
+        (WF: wf tid lc1 mem):
+    wf tid lc2 mem.
+  Proof.
+    hexploit fulfill_promises_sound; try apply WF; eauto. i.
+    inv WF. inv FULFILL. econs; ss; i.
+    - unfold fun_add. condtac.
+      + inversion e. subst.
+        etrans; [|apply join_r]. apply join_r.
+      + etrans; [apply COH|].
+        eapply join_le; try apply View.order. refl.
+    - etrans; eauto.
+      eapply join_le; try apply View.order. refl.
+    - etrans; eauto.
+      eapply join_le; try apply View.order. refl.
+    - unfold fun_add. condtac; ss.
+  Qed.
+
+  Lemma dmb_wf
+        tid mem
+        rr rw wr ww lc1 lc2
+        (DMB: Local.dmb rr rw wr ww lc1 lc2)
+        (WF: wf tid lc1 mem):
+    wf tid lc2 mem.
+  Proof.
+    inv WF. inv DMB. econs; ss; i.
+    - apply join_spec; ss.
+      apply join_spec.
+      + destruct rr; s; try apply bot_spec. apply join_l.
+      + apply join_spec; try apply bot_spec.
+        destruct wr; s; try apply bot_spec. apply join_r.
+    - apply join_spec; ss.
+      apply join_spec.
+      + destruct rw; s; try apply bot_spec. apply join_l.
+      + apply join_spec; try apply bot_spec.
+        destruct ww; s; try apply bot_spec. apply join_r.
+  Qed.
+
+  Definition fulfillable (lc: Local.t (A:=A)): Prop :=
+    forall ts (PROMISED: Promises.lookup ts lc.(Local.promises) = true),
+      (<<LT_VRN: lt lc.(Local.vrn).(View.ts) ts>>) /\
+      (<<LT_VCAP: lt lc.(Local.vcap).(View.ts) ts>>).
 End RMWLocal.
 End RMWLocal.
 
@@ -306,7 +432,7 @@ Section RMWExecUnit.
         eapply ExecUnit.read_step_wf; eauto.
         rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
     - inv STEP. econs; ss. econs; viewtac.
-    - inv STEP. econs; ss. econs; viewtac.
+    (* - inv STEP. econs; ss. econs; viewtac. *)
     - inv LC. econs; ss. econs; viewtac.
       inv CTRL. rewrite <- TS. eauto using ExecUnit.expr_wf.
   Qed.
