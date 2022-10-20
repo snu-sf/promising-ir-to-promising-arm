@@ -38,14 +38,14 @@ Section SIM_EU.
     (<<TERMINAL:
       forall (TERMINAL_TGT: ExecUnit.is_terminal eu1_tgt),
       exists eu2_src,
-        (<<STEPS_SRC: rtc (RMWExecUnit.state_step tid) eu1_src eu2_src>>) /\
+        (<<STEPS_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
         (<<TERMINAL_SRC: RMWExecUnit.is_terminal eu2_src>>) /\
         (<<MEMORY2: RMWExecUnit.mem eu2_src = ExecUnit.mem eu1_tgt>>)>>) /\
     (<<STEP:
       forall eu2_tgt
         (STEP_TGT: ExecUnit.state_step tid eu1_tgt eu2_tgt),
       exists eu2_src,
-        (<<STEP_SRC: rtc (RMWExecUnit.state_step tid) eu1_src eu2_src>>) /\
+        (<<STEP_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
         (<<SIM: sim_eu eu2_src eu2_tgt>>)>>)
   .
   #[local] Hint Unfold _sim_eu: paco.

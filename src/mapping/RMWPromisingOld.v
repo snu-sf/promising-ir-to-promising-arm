@@ -29,7 +29,7 @@ Set Implicit Arguments.
 Section Eqts.
   Context `{A: Type, B: Type, _: orderC A eq, _: orderC B eq}.
 
-  Variant eqts_rmw_event: forall (e1:RMWEvent.t (A:=View.t (A:=A))) (e2:RMWEvent.t (A:=View.t (A:=B))), Prop :=
+  Inductive eqts_rmw_event: forall (e1:RMWEvent.t (A:=View.t (A:=A))) (e2:RMWEvent.t (A:=View.t (A:=B))), Prop :=
   | eqts_rmw_event_internal:
       eqts_rmw_event RMWEvent.internal RMWEvent.internal
   | eqts_rmw_event_read
@@ -80,7 +80,7 @@ Module RMWLocal.
 Section RMWLocal.
   Context `{A: Type, _: orderC A eq}.
 
-  Variant step (n:option Time.t) (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t) (mem:Memory.t) (lc1 lc2:Local.t (A:=A)): Prop :=
+  Variant step (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t) (mem:Memory.t) (lc1 lc2:Local.t (A:=A)): Prop :=
   | step_internal
       (EVENT: event = RMWEvent.internal)
       (LC: lc2 = lc1)
@@ -92,20 +92,15 @@ Section RMWLocal.
       ord vloc vval res ts view_pre
       (EVENT: event = RMWEvent.write ord vloc vval)
       (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2)
-      (PF: match n with
-           | None => True
-           | Some n => le ts n -> OrdW.ge ord OrdW.pln
-           end)
   | step_fadd
       ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1''
       (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
       (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1')
       (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'')
       (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
-      (PF: match n with
-           | None => True
-           | Some n => le ts_new n -> OrdW.ge ordw OrdW.pln
-           end)
+  (* | step_isb *)
+  (*     (EVENT: event = RMWEvent.barrier Barrier.isb) *)
+  (*     (STEP: Local.isb lc1 lc2) *)
   | step_dmb
       rr rw wr ww
       (EVENT: event = RMWEvent.dmb rr rw wr ww)
@@ -118,47 +113,47 @@ Section RMWLocal.
   #[local]
   Hint Constructors step: core.
 
-  (* Variant pf_step (n:Time.t) (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t) (mem:Memory.t) (lc1 lc2:Local.t (A:=A)): Prop := *)
-  (* | pf_step_internal *)
-  (*     (EVENT: event = RMWEvent.internal) *)
-  (*     (LC: lc2 = lc1) *)
-  (* | pf_step_read *)
-  (*     ord vloc res ts *)
-  (*     (EVENT: event = RMWEvent.read ord vloc res) *)
-  (*     (STEP: Local.read false ord vloc res ts lc1 mem lc2) *)
-  (* | pf_step_fulfill *)
-  (*     ord vloc vval res ts view_pre *)
-  (*     (EVENT: event = RMWEvent.write ord vloc vval) *)
-  (*     (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2) *)
-  (*     (PF: le ts n -> OrdW.ge ord OrdW.pln) *)
-  (* | pf_step_fadd *)
-  (*     ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1'' *)
-  (*     (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew) *)
-  (*     (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1') *)
-  (*     (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'') *)
-  (*     (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2) *)
-  (*     (PF: le ts_new n -> OrdW.ge ordw OrdW.pln) *)
-  (* | pf_step_dmb *)
-  (*     rr rw wr ww *)
-  (*     (EVENT: event = RMWEvent.dmb rr rw wr ww) *)
-  (*     (STEP: Local.dmb rr rw wr ww lc1 lc2) *)
-  (* | pf_step_control *)
-  (*     ctrl *)
-  (*     (EVENT: event = RMWEvent.control ctrl) *)
-  (*     (LC: Local.control ctrl lc1 lc2) *)
-  (* . *)
-  (* #[local] *)
-  (* Hint Constructors pf_step: core. *)
+  Variant pf_step (n:Time.t) (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t) (mem:Memory.t) (lc1 lc2:Local.t (A:=A)): Prop :=
+  | pf_stepinternal
+      (EVENT: event = RMWEvent.internal)
+      (LC: lc2 = lc1)
+  | pf_stepread
+      ord vloc res ts
+      (EVENT: event = RMWEvent.read ord vloc res)
+      (STEP: Local.read false ord vloc res ts lc1 mem lc2)
+  | pf_stepfulfill
+      ord vloc vval res ts view_pre
+      (EVENT: event = RMWEvent.write ord vloc vval)
+      (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2)
+      (PF: le ts n -> OrdW.ge ord OrdW.pln)
+  | pf_stepfadd
+      ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1''
+      (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew)
+      (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1')
+      (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'')
+      (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
+      (PF: le ts_new n -> OrdW.ge ordw OrdW.pln)
+  | pf_stepdmb
+      rr rw wr ww
+      (EVENT: event = RMWEvent.dmb rr rw wr ww)
+      (STEP: Local.dmb rr rw wr ww lc1 lc2)
+  | pf_stepcontrol
+      ctrl
+      (EVENT: event = RMWEvent.control ctrl)
+      (LC: Local.control ctrl lc1 lc2)
+  .
+  #[local]
+  Hint Constructors pf_step: core.
 
-  (* Lemma pf_step_step n: *)
-  (*   pf_step n <5= step None. *)
-  (* Proof. *)
-  (*   i. inv PR; eauto. *)
-  (* Qed. *)
+  Lemma pf_step_step n:
+    pf_step n <5= step.
+  Proof.
+    i. inv PR; eauto.
+  Qed.
 
   Lemma step_incr
-        n e tid mem lc1 lc2
-        (LC: step n e tid mem lc1 lc2):
+        e tid mem lc1 lc2
+        (LC: step e tid mem lc1 lc2):
     Local.le lc1 lc2.
   Proof.
     inv LC; try refl.
@@ -174,8 +169,8 @@ Section RMWLocal.
   Qed.
 
   Lemma step_promises_le
-        n e tid mem lc1 lc2
-        (STEP: step n e tid mem lc1 lc2):
+        e tid mem lc1 lc2
+        (STEP: step e tid mem lc1 lc2):
     Promises.le (Local.promises lc2) (Local.promises lc1).
   Proof.
     inv STEP; ss; try by (inv STEP0; ss).
@@ -214,8 +209,8 @@ Section RMWLocal.
   Qed.
 
   Lemma step_promises_sound
-        n e tid mem lc1 lc2
-        (STEP: step n e tid mem lc1 lc2)
+        e tid mem lc1 lc2
+        (STEP: step e tid mem lc1 lc2)
         (SOUND: Promises.sound tid (Local.promises lc1) mem):
     Promises.sound tid (Local.promises lc2) mem.
   Proof.
@@ -318,7 +313,7 @@ Module RMWExecUnit.
 Section RMWExecUnit.
   Context `{A: Type, _: orderC A eq}.
 
-  Record t := mk {
+  Inductive t := mk {
     state: RMWState.t (A:=View.t (A:=A));
     local: Local.t (A:=A);
     mem: Memory.t;
@@ -326,19 +321,19 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors t: core.
 
-  Variant state_step0 (n: option Time.t) (tid:Id.t) (e1 e2:RMWEvent.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
+  Inductive state_step0 (tid:Id.t) (e1 e2:RMWEvent.t (A:=View.t (A:=A))) (eu1 eu2:t): Prop :=
   | state_step0_intro
       (STATE: RMWState.step e1 eu1.(state) eu2.(state))
-      (LOCAL: RMWLocal.step n e2 tid eu1.(mem) eu1.(local) eu2.(local))
+      (LOCAL: RMWLocal.step e2 tid eu1.(mem) eu1.(local) eu2.(local))
       (MEM: eu2.(mem) = eu1.(mem))
   .
   #[local]
   Hint Constructors state_step0: core.
 
-  Variant state_step (n: option Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive state_step (tid:Id.t) (eu1 eu2:t): Prop :=
   | state_step_intro
       e
-      (STEP: state_step0 n tid e e eu1 eu2)
+      (STEP: state_step0 tid e e eu1 eu2)
   .
   #[local]
   Hint Constructors state_step: core.
@@ -349,51 +344,51 @@ Section RMWExecUnit.
     | _ => false
     end.
 
-  Variant state_step_dmbsy (n: option Time.t) (sc: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive state_step_dmbsy (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
   | state_step_dmbsy_intro
       e
-      (STEP: state_step0 n tid e e eu1 eu2)
+      (STEP: state_step0 tid e e eu1 eu2)
       (DMBSY: is_dmbsy e)
-      (VIEW: (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = sc)
+      (VIEW: (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = n)
   .
   #[local]
   Hint Constructors state_step_dmbsy: core.
 
-  Variant state_step_dmbsy_exact (n: option Time.t) (sc: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive state_step_dmbsy_exact (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
   | state_step_dmbsy_exact_intro
       e
-      (STEP: state_step0 n tid e e eu1 eu2)
+      (STEP: state_step0 tid e e eu1 eu2)
       (DMBSY: is_dmbsy e ->
-              (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = sc)
+              (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) = n)
   .
   #[local]
   Hint Constructors state_step_dmbsy_exact: core.
 
-  Variant state_step_dmbsy_under (n: option Time.t) (sc: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive state_step_dmbsy_under (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
   | state_step_dmbsy_under_intro
       e
-      (STEP: state_step0 n tid e e eu1 eu2)
+      (STEP: state_step0 tid e e eu1 eu2)
       (DMBSY: is_dmbsy e ->
-              le (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) sc)
+              le (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts) n)
   .
   #[local]
   Hint Constructors state_step_dmbsy_under: core.
 
-  Variant state_step_dmbsy_over (n: option Time.t) (sc: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive state_step_dmbsy_over (n: Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
   | state_step_dmbsy_over_intro
       e
-      (STEP: state_step0 n tid e e eu1 eu2)
+      (STEP: state_step0 tid e e eu1 eu2)
       (DMBSY: is_dmbsy e ->
-              le sc (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts))
+              le n (join eu1.(local).(Local.vro) eu1.(local).(Local.vwo)).(View.ts))
   .
   #[local]
   Hint Constructors state_step_dmbsy_over: core.
 
   Lemma state_step_dmbsy_over_S
-        n sc tid eu1 eu2
-        (STEP: state_step_dmbsy_over n sc tid eu1 eu2):
-    state_step_dmbsy n sc tid eu1 eu2 \/
-    state_step_dmbsy_over n (S sc) tid eu1 eu2.
+        n tid eu1 eu2
+        (STEP: state_step_dmbsy_over n tid eu1 eu2):
+    state_step_dmbsy n tid eu1 eu2 \/
+    state_step_dmbsy_over (S n) tid eu1 eu2.
   Proof.
     inv STEP. destruct (is_dmbsy e) eqn:X.
     - exploit DMBSY; eauto. i. inv x0.
@@ -403,7 +398,7 @@ Section RMWExecUnit.
     - right. econs; eauto. i. congr.
   Qed.
 
-  Variant promise_step (tid:Id.t) (eu1 eu2:t): Prop :=
+  Inductive promise_step (tid:Id.t) (eu1 eu2:t): Prop :=
   | promise_step_intro
       loc val ts
       (STATE: eu1.(state) = eu2.(state))
@@ -412,14 +407,14 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors promise_step: core.
 
-  Variant step (tid:Id.t) (eu1 eu2:t): Prop :=
-  | step_state (STEP: state_step None tid eu1 eu2)
+  Inductive step (tid:Id.t) (eu1 eu2:t): Prop :=
+  | step_state (STEP: state_step tid eu1 eu2)
   | step_promise (STEP: promise_step tid eu1 eu2)
   .
   #[local]
   Hint Constructors step: core.
 
-  Variant wf (tid:Id.t) (eu:t): Prop :=
+  Inductive wf (tid:Id.t) (eu:t): Prop :=
   | wf_intro
       (STATE: ExecUnit.rmap_wf eu.(mem) eu.(state).(RMWState.rmap))
       (LOCAL: Local.wf tid eu.(mem) eu.(local))
@@ -427,9 +422,8 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors wf: core.
 
-  Lemma state_step0_wf
-        n tid e1 e2 eu1 eu2
-        (STEP: state_step0 n tid e1 e2 eu1 eu2)
+  Lemma state_step0_wf tid e1 e2 eu1 eu2
+        (STEP: state_step0 tid e1 e2 eu1 eu2)
         (EVENT: eqts_rmw_event e1 e2)
         (WF: wf tid eu1):
     wf tid eu2.
@@ -482,26 +476,23 @@ Section RMWExecUnit.
       inv CTRL. rewrite <- TS. eauto using ExecUnit.expr_wf.
   Qed.
 
-  Lemma state_step_wf 
-        n tid eu1 eu2
-        (STEP: state_step n tid eu1 eu2)
+  Lemma state_step_wf tid eu1 eu2
+        (STEP: state_step tid eu1 eu2)
         (WF: wf tid eu1):
     wf tid eu2.
   Proof.
     inv STEP. eapply state_step0_wf; eauto. refl.
   Qed.
 
-  Lemma state_step_dmbsy_wf
-        n sc tid eu1 eu2
-        (STEP: state_step_dmbsy n sc tid eu1 eu2)
+  Lemma state_step_dmbsy_wf n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2)
         (WF: wf tid eu1):
     wf tid eu2.
   Proof.
     inv STEP. eapply state_step0_wf; eauto. refl.
   Qed.
 
-  Lemma promise_step_wf
-        tid eu1 eu2
+  Lemma promise_step_wf tid eu1 eu2
         (STEP: promise_step tid eu1 eu2)
         (WF: wf tid eu1):
     wf tid eu2.
@@ -514,8 +505,7 @@ Section RMWExecUnit.
     - eapply ExecUnit.promise_wf; eauto.
   Qed.
 
-  Lemma step_wf
-        tid eu1 eu2
+  Lemma step_wf tid eu1 eu2
         (STEP: step tid eu1 eu2)
         (WF: wf tid eu1):
     wf tid eu2.
@@ -525,7 +515,7 @@ Section RMWExecUnit.
     - eapply promise_step_wf; eauto.
   Qed.
 
-  Variant le (eu1 eu2:t): Prop :=
+  Inductive le (eu1 eu2:t): Prop :=
   | le_intro
       mem'
       (LC: Local.le eu1.(local) eu2.(local))
@@ -544,8 +534,8 @@ Section RMWExecUnit.
   Qed.
 
   Lemma state_step0_incr
-        n tid e1 e2 eu1 eu2
-        (STEP: state_step0 n tid e1 e2 eu1 eu2):
+        tid e1 e2 eu1 eu2
+        (STEP: state_step0 tid e1 e2 eu1 eu2):
     le eu1 eu2.
   Proof.
     inv STEP. econs.
@@ -553,9 +543,8 @@ Section RMWExecUnit.
     - rewrite app_nil_r. ss.
   Qed.
 
-  Lemma state_step_incr
-        n tid eu1 eu2
-        (STEP: state_step n tid eu1 eu2):
+  Lemma state_step_incr tid eu1 eu2
+        (STEP: state_step tid eu1 eu2):
     le eu1 eu2.
   Proof.
     inv STEP. inv STEP0. econs.
@@ -563,9 +552,8 @@ Section RMWExecUnit.
     - rewrite MEM, app_nil_r. ss.
   Qed.
 
-  Lemma state_step_dmbsy_incr
-        n sc tid eu1 eu2
-        (STEP: state_step_dmbsy n sc tid eu1 eu2):
+  Lemma state_step_dmbsy_incr n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2):
     le eu1 eu2.
   Proof.
     inv STEP. inv STEP0. econs.
@@ -573,8 +561,7 @@ Section RMWExecUnit.
     - rewrite MEM, app_nil_r. ss.
   Qed.
 
-  Lemma promise_step_incr
-        tid eu1 eu2
+  Lemma promise_step_incr tid eu1 eu2
         (STEP: promise_step tid eu1 eu2):
     le eu1 eu2.
   Proof.
@@ -583,8 +570,7 @@ Section RMWExecUnit.
     - inv LOCAL. inv MEM2. ss.
   Qed.
 
-  Lemma step_incr
-        tid eu1 eu2
+  Lemma step_incr tid eu1 eu2
         (STEP: step tid eu1 eu2):
     le eu1 eu2.
   Proof.
@@ -594,8 +580,8 @@ Section RMWExecUnit.
   Qed.
 
   Lemma rtc_state_step_incr
-        n tid eu1 eu2
-        (STEPS: rtc (state_step n tid) eu1 eu2):
+        tid eu1 eu2
+        (STEPS: rtc (state_step tid) eu1 eu2):
     le eu1 eu2.
   Proof.
     induction STEPS; try refl.
@@ -615,32 +601,32 @@ Section RMWExecUnit.
     RMWState.is_terminal (state eu) /\ Local.promises (local eu) = bot.
 
   Lemma state_step0_promises_le
-        n tid e1 e2 eu1 eu2
-        (STEP: state_step0 n tid e1 e2 eu1 eu2):
+        tid e1 e2 eu1 eu2
+        (STEP: state_step0 tid e1 e2 eu1 eu2):
     Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
   Proof.
     inv STEP. eauto using RMWLocal.step_promises_le.
   Qed.
 
   Lemma state_step_promises_le
-        n tid eu1 eu2
-        (STEP: state_step n tid eu1 eu2):
+        tid eu1 eu2
+        (STEP: state_step tid eu1 eu2):
     Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
   Proof.
     inv STEP. eauto using state_step0_promises_le.
   Qed.
 
   Lemma state_step_dmbsy_promises_le
-        n sc tid eu1 eu2
-        (STEP: state_step_dmbsy n sc tid eu1 eu2):
+        n tid eu1 eu2
+        (STEP: state_step_dmbsy n tid eu1 eu2):
     Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
   Proof.
     inv STEP. eauto using state_step0_promises_le.
   Qed.
 
   Lemma rtc_state_step_promises_le
-        n tid eu1 eu2
-        (STEPS: rtc (state_step n tid) eu1 eu2):
+        tid eu1 eu2
+        (STEPS: rtc (state_step tid) eu1 eu2):
     Promises.le eu2.(local).(Local.promises) eu1.(local).(Local.promises).
   Proof.
     induction STEPS; ss.
@@ -650,7 +636,7 @@ End RMWExecUnit.
 End RMWExecUnit.
 
 Module RMWMachine.
-  Record t := mk {
+  Inductive t := mk {
     tpool: IdMap.t (RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit));
     mem: Memory.t;
   }.
@@ -662,7 +648,7 @@ Module RMWMachine.
       (IdMap.map (fun stmts => (RMWState.init stmts, Local.init)) p)
       Memory.empty.
 
-  Variant is_terminal (m:t): Prop :=
+  Inductive is_terminal (m:t): Prop :=
   | is_terminal_intro
       (TERMINAL:
          forall tid st lc
@@ -672,7 +658,7 @@ Module RMWMachine.
   #[global]
   Hint Constructors is_terminal: core.
 
-  Variant no_promise (m:t): Prop :=
+  Inductive no_promise (m:t): Prop :=
   | no_promise_intro
       (PROMISES:
          forall tid st lc
@@ -690,7 +676,7 @@ Module RMWMachine.
     econs. i. eapply TERMINAL. eauto.
   Qed.
 
-  Variant step (eustep: forall (tid:Id.t) (eu1 eu2:RMWExecUnit.t (A:=unit)), Prop) (m1 m2:t): Prop :=
+  Inductive step (eustep: forall (tid:Id.t) (eu1 eu2:RMWExecUnit.t (A:=unit)), Prop) (m1 m2:t): Prop :=
   | step_intro
       tid st1 lc1 st2 lc2
       (FIND: IdMap.find tid m1.(tpool) = Some (st1, lc1))
@@ -725,7 +711,7 @@ Module RMWMachine.
       + s. rewrite (IdMap.add_add tid (st2, lc2)). eauto.
   Qed.
 
-  Variant wf (m:t): Prop :=
+  Inductive wf (m:t): Prop :=
   | wf_intro
       (WF: forall tid st lc
              (FIND: IdMap.find tid m.(tpool) = Some (st, lc)),
@@ -753,8 +739,8 @@ Module RMWMachine.
   Qed.
 
   Lemma step_state_step_wf
-        n m1 m2
-        (STEP: step (RMWExecUnit.state_step n) m1 m2)
+        m1 m2
+        (STEP: step RMWExecUnit.state_step m1 m2)
         (WF: wf m1):
     wf m2.
   Proof.
@@ -846,7 +832,7 @@ Module RMWMachine.
     i. induction H; eauto. econs; eauto. eapply step_mon; eauto.
   Qed.
 
-  Variant exec (p:rmw_program) (m:t): Prop :=
+  Inductive exec (p:rmw_program) (m:t): Prop :=
   | exec_intro
       (STEP: rtc (step RMWExecUnit.step) (init p) m)
       (NOPROMISE: no_promise m)
@@ -854,18 +840,18 @@ Module RMWMachine.
   #[global]
   Hint Constructors exec: core.
 
-  Variant state_exec (m1 m2:t): Prop :=
+  Inductive state_exec (m1 m2:t): Prop :=
   | state_exec_intro
       (TPOOL: IdMap.Forall2
                 (fun tid sl1 sl2 =>
-                   rtc (RMWExecUnit.state_step None tid)
+                   rtc (RMWExecUnit.state_step tid)
                        (RMWExecUnit.mk (fst sl1) (snd sl1) m1.(mem))
                        (RMWExecUnit.mk (fst sl2) (snd sl2) m1.(mem)))
                 m1.(tpool) m2.(tpool))
       (MEM: m1.(mem) = m2.(mem))
   .
 
-  Variant pf_exec (p:rmw_program) (m:t): Prop :=
+  Inductive pf_exec (p:rmw_program) (m:t): Prop :=
   | pf_exec_intro
       m1
       (STEP1: rtc (step RMWExecUnit.promise_step) (init p) m1)
@@ -875,7 +861,7 @@ Module RMWMachine.
   #[global]
   Hint Constructors pf_exec: core.
 
-  Variant equiv (m1 m2:t): Prop :=
+  Inductive equiv (m1 m2:t): Prop :=
   | equiv_intro
       (TPOOL: IdMap.Equal m1.(tpool) m2.(tpool))
       (MEM: m1.(mem) = m2.(mem))
@@ -893,12 +879,12 @@ Module RMWMachine.
   Qed.
 
   Lemma unlift_step_state_step
-        n m1 m2 tid st1 lc1
-        (STEPS: rtc (step (RMWExecUnit.state_step n)) m1 m2)
+        m1 m2 tid st1 lc1
+        (STEPS: rtc (step RMWExecUnit.state_step) m1 m2)
         (TPOOL: IdMap.find tid m1.(tpool) = Some (st1, lc1)):
     exists st2 lc2,
       <<TPOOL: IdMap.find tid m2.(tpool) = Some (st2, lc2)>> /\
-      <<STEPS: rtc (RMWExecUnit.state_step n tid)
+      <<STEPS: rtc (RMWExecUnit.state_step tid)
                    (RMWExecUnit.mk st1 lc1 m1.(mem))
                    (RMWExecUnit.mk st2 lc2 m2.(mem))>>.
   Proof.

@@ -135,13 +135,13 @@ Section DMBSY.
   Context `{A: Type, _: orderC A eq}.
 
   Lemma dmbsy_le_cases
-        n tid eu1 eu4
-        (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu4):
-    (<<STEPS_DMBSY: rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu4>>) \/
+        n sc tid eu1 eu4
+        (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over n sc tid) eu1 eu4):
+    (<<STEPS_DMBSY: rtc (RMWExecUnit.state_step_dmbsy_over n (S sc) tid) eu1 eu4>>) \/
     exists eu2 eu3,
-      (<<STEPS_DMBSY1: rtc (RMWExecUnit.state_step_dmbsy_exact n tid) eu1 eu2>>) /\
-      (<<STEP_DMBSY: RMWExecUnit.state_step_dmbsy n tid eu2 eu3>>) /\
-      (<<STEPS_DMBSY2: rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu3 eu4>>).
+      (<<STEPS_DMBSY1: rtc (RMWExecUnit.state_step_dmbsy_exact n sc tid) eu1 eu2>>) /\
+      (<<STEP_DMBSY: RMWExecUnit.state_step_dmbsy n sc tid eu2 eu3>>) /\
+      (<<STEPS_DMBSY2: rtc (RMWExecUnit.state_step_dmbsy_over n (S sc) tid) eu3 eu4>>).
   Proof.
     induction STEPS; eauto. des.
     - exploit RMWExecUnit.state_step_dmbsy_over_S; eauto. i. des.

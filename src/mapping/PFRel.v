@@ -23,7 +23,7 @@ Require Import PromisingArch.lib.Lang.
 Require Import PromisingArch.promising.Promising.
 
 Require Import PromisingArch.mapping.RMWLang.
-Require Import PromisingArch.mapping.RMWPromising.
+Require Import PromisingArch.mapping.RMWPromisingOld.
 
 Set Implicit Arguments.
 Set Nested Proofs Allowed.

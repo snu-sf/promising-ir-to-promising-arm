@@ -202,53 +202,6 @@ Module PStoRMW.
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
   .
 
-  (** TODO
-        - only non-atomic writes are promised: add to the thread relation
-   *)
-  Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
-    | sim_thread_intro
-        eu1 eu2
-        (STEPS1: rtc (RMWExecUnit.state_step tid) eu eu1)
-        (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu1))
-        (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu1))
-        (SIM_MEM: sim_memory tid n
-                             (PSThread.local th_ps)
-                             (PSGlobal.promises (PSThread.global th_ps))
-                             (PSGlobal.memory (PSThread.global th_ps))
-                             (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1))
-        (STEPS2: if after_sc
-                 then rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu2
-                 else rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu2)
-        (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
-  .
-
-  Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
-    forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
-           (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
-    | sim_thread_sl_intro
-        st_ps lc_ps st_arm lc_arm
-        (SIM_THREAD: sim_thread tid n after_sc
-                       (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
-      sim_thread_sl tid n after_sc gl_ps mem_arm
-        (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
-  .
-
-  Variant sim (n: Time.t) (c: PSConfiguration.t) (m: RMWMachine.t): Prop :=
-    | sim_intro
-        m1
-        (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) m m1)
-        (SIM_THREADS:
-          forall tid,
-            opt_rel
-              (sim_thread_sl tid n true c.(PSConfiguration.global) m.(RMWMachine.mem))
-              (IdentMap.find tid c.(PSConfiguration.threads))
-              (IdMap.find tid m.(RMWMachine.tpool)))
-        (SIM_SC: forall loc,
-            PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
-  .
-
   Lemma sim_tview_le
         tview lc1_arm lc2_arm
         (SIM: sim_tview tview lc1_arm)
@@ -1127,4 +1080,51 @@ Module PStoRMW.
     - eapply sim_tview_le; eauto. s. apply TVIEW1.
     - inv MEM1. ss.
   Qed.
+
+  (** TODO
+        - only non-atomic writes are promised: add to the thread relation
+   *)
+  (* Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool) *)
+  (*   (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop := *)
+  (*   | sim_thread_intro *)
+  (*       eu1 eu2 *)
+  (*       (STEPS1: rtc (RMWExecUnit.state_step tid) eu eu1) *)
+  (*       (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu1)) *)
+  (*       (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu1)) *)
+  (*       (SIM_MEM: sim_memory tid n *)
+  (*                            (PSThread.local th_ps) *)
+  (*                            (PSGlobal.promises (PSThread.global th_ps)) *)
+  (*                            (PSGlobal.memory (PSThread.global th_ps)) *)
+  (*                            (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1)) *)
+  (*       (STEPS2: if after_sc *)
+  (*                then rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu2 *)
+  (*                else rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu2) *)
+  (*       (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot) *)
+  (* . *)
+
+  (* Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool) *)
+  (*   (gl_ps: PSGlobal.t) (mem_arm: Memory.t): *)
+  (*   forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t) *)
+  (*          (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop := *)
+  (*   | sim_thread_sl_intro *)
+  (*       st_ps lc_ps st_arm lc_arm *)
+  (*       (SIM_THREAD: sim_thread tid n after_sc *)
+  (*                      (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)): *)
+  (*     sim_thread_sl tid n after_sc gl_ps mem_arm *)
+  (*       (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm) *)
+  (* . *)
+
+  (* Variant sim (n: Time.t) (c: PSConfiguration.t) (m: RMWMachine.t): Prop := *)
+  (*   | sim_intro *)
+  (*       m1 *)
+  (*       (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) m m1) *)
+  (*       (SIM_THREADS: *)
+  (*         forall tid, *)
+  (*           opt_rel *)
+  (*             (sim_thread_sl tid n true c.(PSConfiguration.global) m.(RMWMachine.mem)) *)
+  (*             (IdentMap.find tid c.(PSConfiguration.threads)) *)
+  (*             (IdMap.find tid m.(RMWMachine.tpool))) *)
+  (*       (SIM_SC: forall loc, *)
+  (*           PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n)) *)
+  (* . *)
 End PStoRMW.
