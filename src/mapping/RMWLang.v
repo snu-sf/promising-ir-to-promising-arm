@@ -19,11 +19,10 @@ Inductive rmw_instrT :=
 | rmw_instr_load (ord:OrdR.t) (res:Id.t) (eloc:exprT)
 | rmw_instr_store (ord:OrdW.t) (eloc:exprT) (eval:exprT)
 | rmw_instr_fadd (ordr:OrdR.t) (ordw:OrdW.t) (res:Id.t) (eloc:exprT) (eadd:exprT)
-| rmw_instr_barrier (b:Barrier.t)
+| rmw_instr_dmb (rr rw wr ww:bool)
 .
 #[export]
 Hint Constructors rmw_instrT: core.
-Coercion rmw_instr_barrier: Barrier.t >-> rmw_instrT.
 
 Definition regs_of_rmw_instr (i: rmw_instrT): IdSet.t :=
   match i with
@@ -53,7 +52,7 @@ Module RMWEvent.
   | read (ord:OrdR.t) (vloc:ValA.t (A:=A)) (res:ValA.t (A:=A))
   | write (ord:OrdW.t) (vloc:ValA.t (A:=A)) (vval:ValA.t (A:=A))
   | fadd (ordr:OrdR.t) (ordw:OrdW.t) (vloc vold vnew: ValA.t (A:=A))
-  | barrier (b:Barrier.t)
+  | dmb (rr rw wr ww:bool)
   .
 End RMWEvent.
 
@@ -107,10 +106,10 @@ Section RMWState.
       step (RMWEvent.fadd or ow vloc vold vnew)
            (mk ((rmw_stmt_instr (rmw_instr_fadd or ow res eloc eadd))::stmts) rmap)
            (mk stmts rmap')
-  | step_barrier
-      b stmts rmap:
-      step (RMWEvent.barrier b)
-           (mk ((rmw_stmt_instr (rmw_instr_barrier b))::stmts) rmap)
+  | step_dmb
+      rr rw wr ww stmts rmap:
+      step (RMWEvent.dmb rr rw wr ww)
+           (mk ((rmw_stmt_instr (rmw_instr_dmb rr rw wr ww))::stmts) rmap)
            (mk stmts rmap)
   | step_if
       cond vcond s1 s2 stmts rmap stmts'

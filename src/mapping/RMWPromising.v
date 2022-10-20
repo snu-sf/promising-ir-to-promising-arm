@@ -48,8 +48,8 @@ Section Eqts.
       (VNEW: eqts_val vnew1 vnew2):
       eqts_rmw_event (RMWEvent.fadd ordr ordw vloc1 vold1 vnew1) (RMWEvent.fadd ordr ordw vloc2 vold2 vnew2)
   | eqts_rmw_event_barrier
-      b:
-      eqts_rmw_event (RMWEvent.barrier b) (RMWEvent.barrier b)
+      rr rw wr ww:
+      eqts_rmw_event (RMWEvent.dmb rr rw wr ww) (RMWEvent.dmb rr rw wr ww)
   | eqts_rmw_event_control
       ctrl1 ctrl2
       (CTRL: eqts_view ctrl1 ctrl2):
@@ -102,7 +102,7 @@ Section RMWLocal.
   (*     (STEP: Local.isb lc1 lc2) *)
   | step_dmb
       rr rw wr ww
-      (EVENT: event = RMWEvent.barrier (Barrier.dmb rr rw wr ww))
+      (EVENT: event = RMWEvent.dmb rr rw wr ww)
       (STEP: Local.dmb rr rw wr ww lc1 lc2)
   | step_control
       ctrl
@@ -301,7 +301,7 @@ Section RMWExecUnit.
 
   Definition is_dmbsy (e: RMWEvent.t (A:=View.t (A:=A))): bool :=
     match e with
-    | RMWEvent.barrier (Barrier.dmb true true true true) => true
+    | RMWEvent.dmb true true true true => true
     | _ => false
     end.
 

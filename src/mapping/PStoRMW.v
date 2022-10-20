@@ -86,12 +86,11 @@ Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
         (ps_to_rmw_ordr ordr) (ps_to_rmw_ordw ordw)
         reg (expr_const (Zpos loc)) (ps_to_rmw_expr e)
   | Instr.fence ordr ordw =>
-      rmw_instr_barrier
-        (Barrier.dmb
-           (Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.seqcst ordw)
-           (Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.acqrel ordw)
-           (Ordering.le Ordering.seqcst ordw)
-           (Ordering.le Ordering.acqrel ordw))
+      rmw_instr_dmb
+        (Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.seqcst ordw)
+        (Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.acqrel ordw)
+        (Ordering.le Ordering.seqcst ordw)
+        (Ordering.le Ordering.acqrel ordw)
   end.
 
 Fixpoint ps_to_rmw_stmt (stmt: Stmt.t): rmw_stmtT :=

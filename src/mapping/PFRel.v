@@ -57,7 +57,7 @@ Definition is_release {A} `{_: orderC A} (e: RMWEvent.t (A:=A)): bool :=
   match e with
   | RMWEvent.write ordw _ _
   | RMWEvent.fadd _ ordw _ _ _ => OrdW.ge OrdW.release_pc ordw
-  | RMWEvent.barrier (Barrier.dmb rr rw wr ww) => andb rw ww
+  | RMWEvent.dmb rr rw wr ww => andb rw ww
   | _ => false
   end.
 
@@ -110,13 +110,13 @@ Module PFRelLocal.
         (STEP_PROMISE: promise vloc.(ValA.val) vnew.(ValA.val) ts_new tid lc1' mem1 lc1'' mem2)
         (STEP_FULFILL: fulfill true ordw vloc vnew res ts_new tid view_pre lc1'' mem2 lc1''')
         (STEP_CONTROL: Local.control vold.(ValA.annot) lc1''' lc2)
-    | step_isb
-        (EVENT: event = RMWEvent.barrier Barrier.isb)
-        (STEP: isb lc1 lc2)
-        (MEM: mem2 = mem1)
+    (* | step_isb *)
+    (*     (EVENT: event = RMWEvent.barrier Barrier.isb) *)
+    (*     (STEP: isb lc1 lc2) *)
+    (*     (MEM: mem2 = mem1) *)
     | step_dmb
         rr rw wr ww
-        (EVENT: event = RMWEvent.barrier (Barrier.dmb rr rw wr ww))
+        (EVENT: event = RMWEvent.dmb rr rw wr ww)
         (PROMISES: andb rw ww = true -> lc1.(Local.promises) = bot)
         (STEP: dmb rr rw wr ww lc1 lc2)
         (MEM: mem2 = mem1)
@@ -153,7 +153,7 @@ Module PFRelLocal.
       - etrans; eauto using read_incr.
         etrans; eauto using promise_incr.
         etrans; eauto using fulfill_incr, control_incr.
-      - eauto using isb_incr.
+      (* - eauto using isb_incr. *)
       - eauto using dmb_incr.
       - eauto using control_incr.
     Qed.
@@ -407,7 +407,7 @@ Module PFRelExecUnit.
           eapply ExecUnit.read_step_wf; eauto.
           rewrite <- TS. eapply ExecUnit.expr_wf; eauto.
       - inv STEP. econs; ss. econs; viewtac.
-      - inv STEP. econs; ss. econs; viewtac.
+      (* - inv STEP. econs; ss. econs; viewtac. *)
       - inv LC. econs; ss. econs; viewtac.
         inv CTRL. rewrite <- TS. eauto using ExecUnit.expr_wf.
     Qed.
@@ -578,9 +578,9 @@ Module PFRelExecUnit.
       - econs 2; eauto.
       - econs 3; eauto. destruct ord; ss.
       - econs 6; eauto. destruct ordw; ss.
-      - econs 8; eauto.
-      - econs 9; eauto. destruct rw, ww; ss.
-      - econs 10; eauto.
+      (* - econs 8; eauto. *)
+      - econs 8; eauto. destruct rw, ww; ss.
+      - econs 9; eauto.
     Qed.
 
     Lemma fulfill_step_state_step

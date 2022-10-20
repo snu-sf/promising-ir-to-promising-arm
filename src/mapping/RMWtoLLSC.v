@@ -81,8 +81,8 @@ Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
          (expr_op1 op_not (expr_reg tmp2));
        stmt_if (expr_reg tmp1) [] [];
        stmt_instr (instr_assign res (expr_reg tmp1))]
-  | rmw_stmt_instr (rmw_instr_barrier b) =>
-      [stmt_instr (instr_barrier b)]
+  | rmw_stmt_instr (rmw_instr_dmb rr rw wr ww) =>
+      [stmt_instr (instr_barrier (Barrier.dmb rr rw wr ww))]
   | rmw_stmt_if cond s1 s2 =>
       [stmt_if cond
                (List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) s1))
@@ -534,7 +534,7 @@ Section RMWtoLLSC.
       eexists (RMWExecUnit.mk _ _ _). splits.
       { econs 2; try refl. econs. econs; ss.
         - econs; ss.
-        - econs 7; eauto.
+        - econs 6; eauto.
       }
       rewrite VAL. condtac; ss.
       - right. eapply CIH; eauto.
@@ -792,20 +792,13 @@ Section RMWtoLLSC.
 
     { (* barrier *)
       inv STATE. inv LOCAL0; inv EVENT.
-      - exploit sim_local_isb; eauto. i. des.
-        eexists (RMWExecUnit.mk _ _ _). splits.
-        { econs 2; try refl. econs. econs; ss.
-          - econs; ss.
-          - econs 5; eauto.
-        }
-        right. eapply CIH; eauto. congr.
-      - exploit sim_local_dmb; eauto. i. des.
-        eexists (RMWExecUnit.mk _ _ _). splits.
-        { econs 2; try refl. econs. econs; ss.
-          - econs; ss.
-          - econs 6; eauto.
-        }
-        right. eapply CIH; eauto. congr.
+      exploit sim_local_dmb; eauto. i. des.
+      eexists (RMWExecUnit.mk _ _ _). splits.
+      { econs 2; try refl. econs. econs; ss.
+        - econs; ss.
+        - econs 5; eauto.
+      }
+      right. eapply CIH; eauto. congr.
     }
   Qed.
 End RMWtoLLSC.
