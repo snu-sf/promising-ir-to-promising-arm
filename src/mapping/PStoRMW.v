@@ -202,6 +202,9 @@ Module PStoRMW.
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
   .
 
+  (** TODO
+        - only non-atomic writes are promised: add to the thread relation
+   *)
   Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
     | sim_thread_intro
@@ -220,9 +223,6 @@ Module PStoRMW.
         (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
   .
 
-  (** TODO
-        - only non-atomic writes are promised: add to the thread relation
-   *)
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
     forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
@@ -253,11 +253,7 @@ Module PStoRMW.
         tview lc1_arm lc2_arm
         (SIM: sim_tview tview lc1_arm)
         (LE: Local.le lc1_arm lc2_arm)
-        (VNEW2: le lc2_arm.(Local.vrn) lc2_arm.(Local.vwn))
-        (OLD2: forall loc,
-            le (lc2_arm.(Local.coh) loc) (join lc2_arm.(Local.vro) lc2_arm.(Local.vwo)))
-        (FWD2: forall loc,
-            le (lc2_arm.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc2_arm.(Local.coh) loc))):
+        (VNEW2: le lc2_arm.(Local.vrn) lc2_arm.(Local.vwn)):
     sim_tview tview lc2_arm.
   Proof.
     inv SIM. econs; ss; i.
@@ -403,16 +399,7 @@ Module PStoRMW.
       ss. right. right.
       esplits; eauto; [|econs; ss; apply MEM1].
       eapply sim_tview_le; try exact TVIEW1; ss; i.
-      - eapply join_le; try apply View.order; try refl. apply TVIEW1.
-      - unfold fun_add. condtac.
-        + apply join_spec.
-          * etrans; [apply WF1_ARM|].
-            apply join_spec; try apply join_r.
-            etrans; [|apply join_l]. apply join_l.
-          * etrans; [|apply join_l]. apply join_r.
-        + etrans; [apply WF1_ARM|].
-          eapply join_le; try apply View.order. refl.
-      - etrans; [apply WF1_ARM|]. apply x0.
+      eapply join_le; try apply View.order; try refl. apply TVIEW1.
     }
 
     { (* normal read *)
@@ -884,9 +871,6 @@ Module PStoRMW.
     }
   Qed.
 
-  (* TODO: SC fence case?
-     - sc <= join vro vwo?
-   *)
   Lemma sim_dmb
         tid n
         lc1_ps gl1_ps lc1_arm mem_arm
@@ -1122,5 +1106,25 @@ Module PStoRMW.
             apply LC_WF1_PS.
           * apply LC_WF1_PS.
     }
+  Qed.
+
+  Lemma sim_control
+        tid n
+        lc1_ps gl1_ps lc1_arm mem_arm
+        ctrl lc2_arm
+        (TVIEW1: sim_tview (PSLocal.tview lc1_ps) lc1_arm)
+        (SC1: forall loc, PSTime.le (gl1_ps.(PSGlobal.sc) loc) (ntt n))
+        (MEM1: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) lc1_arm mem_arm)
+        (LC_WF1_PS: PSLocal.wf lc1_ps gl1_ps)
+        (GL_WF1_PS: PSGlobal.wf gl1_ps)
+        (WF1_ARM: RMWLocal.wf tid lc1_arm mem_arm)
+        (STEP: Local.control ctrl lc1_arm lc2_arm):
+    (<<TVIEW2: sim_tview (PSLocal.tview lc1_ps) lc2_arm>>) /\
+    (<<MEM2: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) lc2_arm mem_arm>>).
+  Proof.
+    exploit (Local.control_incr (A:=unit)); eauto. i.
+    inv STEP. split.
+    - eapply sim_tview_le; eauto. s. apply TVIEW1.
+    - inv MEM1. ss.
   Qed.
 End PStoRMW.
