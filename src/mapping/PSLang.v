@@ -22,7 +22,7 @@ Set Implicit Arguments.
 
 Module Expr.
   Inductive t: Type :=
-  | const (c: Const.t)
+  | const (c: Const.num_t)
   | reg (r: Id.t)
   | op1 (op: opT1) (e: t)
   | op2 (op: opT2) (e1 e2: t)

@@ -94,7 +94,7 @@ Section RMWLocal.
       (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2)
       (PF: match n with
            | None => True
-           | Some n => le ts n -> OrdW.ge ord OrdW.pln
+           | Some n => le ts n -> OrdW.ge OrdW.pln ord
            end)
   | step_fadd
       ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1''
@@ -104,7 +104,7 @@ Section RMWLocal.
       (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2)
       (PF: match n with
            | None => True
-           | Some n => le ts_new n -> OrdW.ge ordw OrdW.pln
+           | Some n => le ts_new n -> OrdW.ge OrdW.pln ordw
            end)
   | step_dmb
       rr rw wr ww

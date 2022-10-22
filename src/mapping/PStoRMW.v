@@ -121,11 +121,60 @@ Module PStoRMW.
   .
   #[export] Hint Constructors sim_val: core.
 
+  Definition sim_regs (regs_ps: RegFile.t) (regs_arm: RMap.t (A:=View.t (A:=unit))): Prop :=
+    forall r, sim_val (IdentFun.find r regs_ps) (RMap.find r regs_arm).(ValA.val).
+
+  Variant sim_program_event: forall (e_ps: ProgramEvent.t) (e_arm: RMWEvent.t (A:=View.t (A:=unit))), Prop :=
+    | sim_program_event_internal:
+      sim_program_event ProgramEvent.silent RMWEvent.internal
+    | sim_program_event_control
+        ctrl:
+      sim_program_event ProgramEvent.silent (RMWEvent.control ctrl)
+    | sim_program_event_read
+        loc_ps val_ps ord_ps
+        ord_arm loc_arm val_arm
+        (LOC: loc_arm.(ValA.val) = Zpos loc_ps)
+        (VAL: sim_val val_ps val_arm.(ValA.val))
+        (ORD: ord_arm = ps_to_rmw_ordr ord_ps)
+      :
+      sim_program_event (ProgramEvent.read loc_ps val_ps ord_ps)
+                        (RMWEvent.read ord_arm loc_arm val_arm)
+    | sim_program_event_write
+        loc_ps val_ps ord_ps
+        ord_arm loc_arm val_arm
+        (LOC: loc_arm.(ValA.val) = Zpos loc_ps)
+        (VAL: sim_val val_ps val_arm.(ValA.val))
+        (ORD: ord_arm = ps_to_rmw_ordw ord_ps)
+      :
+      sim_program_event (ProgramEvent.write loc_ps val_ps ord_ps)
+                        (RMWEvent.write ord_arm loc_arm val_arm)
+    | sim_program_event_fadd
+        loc_ps vold_ps vnew_ps ordr_ps ordw_ps
+        ordr_arm ordw_arm loc_arm vold_arm vnew_arm
+        (LOC: loc_arm.(ValA.val) = Zpos loc_ps)
+        (VOLD: sim_val vold_ps vold_arm.(ValA.val))
+        (VNEW: sim_val vnew_ps vnew_arm.(ValA.val))
+        (ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps)
+        (ORDW: ordw_arm = ps_to_rmw_ordw ordw_ps)
+      :
+      sim_program_event (ProgramEvent.update loc_ps vold_ps vnew_ps ordr_ps ordw_ps)
+                        (RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm)
+    | sim_program_event_dmb
+        ordr_ps ordw_ps
+        rr rw wr ww
+        (RR: rr = Ordering.le Ordering.acqrel ordr_ps || Ordering.le Ordering.seqcst ordw_ps)
+        (RW: rw = Ordering.le Ordering.acqrel ordr_ps || Ordering.le Ordering.acqrel ordw_ps)
+        (WR: wr = Ordering.le Ordering.seqcst ordw_ps)
+        (WW: ww = Ordering.le Ordering.acqrel ordw_ps):
+      sim_program_event (ProgramEvent.fence ordr_ps ordw_ps)
+                        (RMWEvent.dmb rr rw wr ww)
+  .
+  #[export] Hint Constructors sim_program_event: core.
+
   Variant sim_state (st_ps: State.t) (st_arm: RMWState.t (A:=View.t (A:=unit))): Prop :=
     | sim_state_intro
         (STMTS: RMWState.stmts st_arm = ps_to_rmw_stmts (State.stmts st_ps))
-        (REGS: forall r, sim_val (IdentFun.find r st_ps.(State.regs))
-                                 (RMap.find r st_arm.(RMWState.rmap)).(ValA.val))
+        (REGS: sim_regs st_ps.(State.regs) st_arm.(RMWState.rmap))
   .
   #[export] Hint Constructors sim_state: core.
 
@@ -201,6 +250,119 @@ Module PStoRMW.
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
   .
+
+  Variant sim_thread (tid: Ident.t) (n: Time.t)
+    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
+    | sim_thread_intro
+        (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu))
+        (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu))
+        (SIM_MEM: sim_memory tid n
+                             (PSThread.local th_ps)
+                             (PSGlobal.promises (PSThread.global th_ps))
+                             (PSGlobal.memory (PSThread.global th_ps))
+                             (RMWExecUnit.local eu) (RMWExecUnit.mem eu))
+  .
+
+  Lemma sim_val_eq_inv
+        val1 val2 val_arm
+        (VAL1: sim_val val1 val_arm)
+        (VAL2: sim_val val2 val_arm):
+    val1 = val2.
+  Proof.
+    inv VAL1. inv VAL2. ss.
+  Qed.
+
+  Lemma sim_regs_eval_expr
+        regs_ps regs_arm e
+        (SIM: sim_regs regs_ps regs_arm):
+    sim_val (RegFile.eval_expr regs_ps e) (sem_expr regs_arm (ps_to_rmw_expr e)).(ValA.val).
+  Proof.
+    induction e; ss.
+    - destruct op. ss.
+      inv IHe; ss. condtac; econs.
+    - destruct op; inv IHe1; inv IHe2; ss.
+  Qed.
+
+  Lemma sim_regs_add
+        regs_ps regs_arm
+        r val_ps (val_arm: ValA.t (A:=View.t (A:=unit)))
+        (SIM: sim_regs regs_ps regs_arm)
+        (VAL: sim_val val_ps val_arm.(ValA.val)):
+    sim_regs (IdentFun.add r val_ps regs_ps)
+             (RMap.add r val_arm regs_arm).
+  Proof.
+    ii. rewrite IdentFun.add_spec, RMap.add_o.
+    condtac; ss; subst.
+    - condtac; ss. congr.
+    - condtac; ss.
+  Qed.
+
+  Lemma sim_state_step
+        st1_ps st1_arm e_arm st2_arm
+        (SIM1: sim_state st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm):
+    exists e_ps st2_ps,
+      (<<STEP_PS: State.step e_ps st1_ps st2_ps>>) /\
+      (<<EVENT: sim_program_event e_ps e_arm>>) /\
+      (<<SIM2: sim_state st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; cycle 1.
+    { (* ite *)
+      inv STEP. condtac.
+      - esplits; [econs 2|..]; ss.
+        + des_ifs.
+          exploit sim_regs_eval_expr; eauto.
+          rewrite Heq. ii. inv x0. congr.
+        + econs; ss. rewrite <- List.map_app. ss.
+      - esplits; [econs 3|..]; ss.
+        + des_ifs.
+          exploit sim_regs_eval_expr; eauto.
+          rewrite Heq. ii. inv x0. congr.
+        + econs; ss. rewrite <- List.map_app. ss.
+    }
+    { (* dowhile *)
+      inv STEP. esplits; [econs 4|..]; ss.
+      econs; ss. unfold ps_to_rmw_stmts.
+      rewrite List.map_app. ss.
+    }
+
+    destruct i; ss; inv STEP.
+    { (* skip *)
+      esplits; [econs 1; econs 1|..]; ss.
+    }
+    { (* assign *)
+      esplits; [econs 1; econs 2|..]; ss.
+      econs; ss.
+      apply sim_regs_add; ss.
+      apply sim_regs_eval_expr; ss.
+    }
+    { (* load *)
+      esplits; [econs 1; econs 3|..]; eauto.
+      econs; ss.
+      apply sim_regs_add; ss.
+    }
+    { (* store *)
+      esplits; [econs 1; econs 4|..]; eauto.
+      econs; ss.
+      apply sim_regs_eval_expr; ss.
+    }
+    { (* fadd *)
+      esplits; [econs 1; econs 5|..]; eauto.
+      - econs; ss. s.
+        exploit sim_regs_eval_expr; eauto. i.
+        inv x0. rewrite <- H0. ss.
+      - econs; ss.
+        apply sim_regs_add; ss.
+    }
+    { (* dmb *)
+      esplits; [econs 1; econs 6|..]; eauto.
+    }
+  Qed.
 
   Lemma sim_tview_le
         tview lc1_arm lc2_arm
@@ -1066,11 +1228,7 @@ Module PStoRMW.
         lc1_ps gl1_ps lc1_arm mem_arm
         ctrl lc2_arm
         (TVIEW1: sim_tview (PSLocal.tview lc1_ps) lc1_arm)
-        (SC1: forall loc, PSTime.le (gl1_ps.(PSGlobal.sc) loc) (ntt n))
         (MEM1: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) lc1_arm mem_arm)
-        (LC_WF1_PS: PSLocal.wf lc1_ps gl1_ps)
-        (GL_WF1_PS: PSGlobal.wf gl1_ps)
-        (WF1_ARM: RMWLocal.wf tid lc1_arm mem_arm)
         (STEP: Local.control ctrl lc1_arm lc2_arm):
     (<<TVIEW2: sim_tview (PSLocal.tview lc1_ps) lc2_arm>>) /\
     (<<MEM2: sim_memory tid n lc1_ps (Global.promises gl1_ps) (Global.memory gl1_ps) lc2_arm mem_arm>>).
@@ -1081,50 +1239,138 @@ Module PStoRMW.
     - inv MEM1. ss.
   Qed.
 
-  (** TODO
-        - only non-atomic writes are promised: add to the thread relation
-   *)
-  (* Variant sim_thread (tid: Ident.t) (n: Time.t) (after_sc: bool) *)
-  (*   (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop := *)
-  (*   | sim_thread_intro *)
-  (*       eu1 eu2 *)
-  (*       (STEPS1: rtc (RMWExecUnit.state_step tid) eu eu1) *)
-  (*       (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu1)) *)
-  (*       (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu1)) *)
-  (*       (SIM_MEM: sim_memory tid n *)
-  (*                            (PSThread.local th_ps) *)
-  (*                            (PSGlobal.promises (PSThread.global th_ps)) *)
-  (*                            (PSGlobal.memory (PSThread.global th_ps)) *)
-  (*                            (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1)) *)
-  (*       (STEPS2: if after_sc *)
-  (*                then rtc (RMWExecUnit.state_step_dmbsy_over (S n) tid) eu1 eu2 *)
-  (*                else rtc (RMWExecUnit.state_step_dmbsy_over n tid) eu1 eu2) *)
-  (*       (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot) *)
-  (* . *)
+  Lemma sim_thread_step
+        tid n th1_ps eu1 eu2
+        (SIM1: sim_thread tid n th1_ps eu1)
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF1_ARM: RMWLocal.wf tid (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1))
+        (STEP_ARM: RMWExecUnit.state_step (Some n) tid eu1 eu2)
+        (READ_LE: le eu2.(RMWExecUnit.local).(Local.vro).(View.ts) n):
+    exists th2_ps,
+      (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+      (<<SIM2: sim_thread tid n th2_ps eu2>>).
+  Proof.
+    destruct th1_ps as [st1_ps lc1_ps gl1_ps].
+    destruct eu1 as [st1_arm lc1_arm mem1_arm].
+    destruct eu2 as [st2_arm lc2_arm mem2_arm].
+    inv SIM1. inv STEP_ARM. inv STEP. ss. subst.
+    exploit sim_state_step; eauto. i. des.
+    inv LOCAL; inv EVENT.
+    { (* internal *)
+      esplits.
+      - econs 2; try refl.
+        econs 1; [econs 2; [|econs 1]|]; eauto.
+      - ss.
+    }
 
-  (* Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool) *)
-  (*   (gl_ps: PSGlobal.t) (mem_arm: Memory.t): *)
-  (*   forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t) *)
-  (*          (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop := *)
-  (*   | sim_thread_sl_intro *)
-  (*       st_ps lc_ps st_arm lc_arm *)
-  (*       (SIM_THREAD: sim_thread tid n after_sc *)
-  (*                      (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)): *)
-  (*     sim_thread_sl tid n after_sc gl_ps mem_arm *)
-  (*       (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm) *)
-  (* . *)
+    { (* read *)
+      exploit sim_read; try exact STEP; eauto.
+      { admit. }
+      i. des.
+      - admit.
+      - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst.
+        esplits.
+        + econs 2; try refl.
+          econs 1; [econs 2; [|econs 2]|]; eauto.
+        + ss.
+      - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst.
+        esplits.
+        + econs 2; try refl.
+          econs 1; [econs 2; [|econs 8]|]; eauto.
+        + ss.
+    }
 
-  (* Variant sim (n: Time.t) (c: PSConfiguration.t) (m: RMWMachine.t): Prop := *)
-  (*   | sim_intro *)
-  (*       m1 *)
-  (*       (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) m m1) *)
-  (*       (SIM_THREADS: *)
-  (*         forall tid, *)
-  (*           opt_rel *)
-  (*             (sim_thread_sl tid n true c.(PSConfiguration.global) m.(RMWMachine.mem)) *)
-  (*             (IdentMap.find tid c.(PSConfiguration.threads)) *)
-  (*             (IdMap.find tid m.(RMWMachine.tpool))) *)
-  (*       (SIM_SC: forall loc, *)
-  (*           PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n)) *)
-  (* . *)
+    { (* fulfill *)
+      exploit sim_fulfill; try exact STEP; eauto; ss.
+      { Transparent Ordering.le.
+        i. apply PF in H. destruct ord_ps; ss.
+      }
+      { i. apply PSTime.bot_spec. }
+      i. des. inv VAL.
+      esplits.
+      - econs 2.
+        { econs 1; [econs 1; econs 3|]; eauto. }
+        econs 2; try refl.
+        econs 1; [econs 2; [|econs 3]|]; eauto.
+      - ss.
+    }
+
+    { (* fadd *)
+      exploit sim_read; try exact STEP_READ; eauto.
+      { admit. }
+      i. des.
+      - admit.
+      - exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des.
+        exploit (RMWLocal.read_wf (A:=unit)); eauto. i.
+        exploit sim_fulfill; try exact STEP_FULFILL; eauto; ss.
+        { Transparent Ordering.le.
+          i. apply PF in H. destruct ordw_ps; ss.
+        }
+        { admit. }
+        { admit. }
+        i. des.
+        admit.
+      - admit.
+    }
+
+    { (* dmb *)
+      exploit sim_dmb; try exact STEP; eauto.
+      { admit. }
+      { admit. }
+      { admit. }
+      i. des. esplits.
+      - econs 2; try refl.
+        econs; [econs 2; [|econs 5]|]; eauto.
+      - ss.
+    }
+
+    { (* control *)
+      exploit sim_control; try exact LC; eauto. i. des.
+      esplits.
+      - econs 2; try refl.
+        econs; [econs 2; [|econs 1]|]; eauto.
+      - ss.
+    }
+  Admitted.
+
+  Variant sim_thread_exec (tid: Ident.t) (n: Time.t) (after_sc: bool)
+    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
+    | sim_thread_exec_intro
+        sc eu1 eu2 eu3
+        (STEPS1: rtc (RMWExecUnit.state_step None tid) eu eu1)
+        (SIM_THREAD: sim_thread tid n th_ps eu1)
+        (SC: sc = if after_sc then S n else n)
+        (STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
+        (PROMISES2: forall ts (PROMISED: Promises.lookup ts eu2.(RMWExecUnit.local).(Local.promises)),
+            lt n ts)
+        (STEPS3: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu2 eu3)
+        (PROMISES3: eu3.(RMWExecUnit.local).(Local.promises) = bot)
+  .
+
+  Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
+    (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
+    forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
+           (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
+    | sim_thread_sl_intro
+        st_ps lc_ps st_arm lc_arm
+        (SIM_THREAD: sim_thread_exec tid n after_sc
+                       (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
+      sim_thread_sl tid n after_sc gl_ps mem_arm
+        (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
+  .
+
+  Variant sim (n: Time.t) (c: PSConfiguration.t) (m: RMWMachine.t): Prop :=
+    | sim_intro
+        m1
+        (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) m m1)
+        (SIM_THREADS:
+          forall tid,
+            opt_rel
+              (sim_thread_sl tid n true c.(PSConfiguration.global) m.(RMWMachine.mem))
+              (IdentMap.find tid c.(PSConfiguration.threads))
+              (IdMap.find tid m.(RMWMachine.tpool)))
+        (SIM_SC: forall loc,
+            PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
+  .
 End PStoRMW.

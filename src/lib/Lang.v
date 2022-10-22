@@ -215,12 +215,12 @@ End RMap.
 
 Definition sem0_op1 (op:opT1) (v1:Val.t): Val.t :=
   match op with
-  | op_not => -v1
+  | op_not => if Z.eqb v1 0 then 1 else 0
   end.
 
 Definition sem0_op2 (op:opT2) (v1 v2:Val.t): Val.t :=
   match op with
-  | op_add => v1 + v1
+  | op_add => v1 + v2
   | op_sub => v1 - v2
   | op_mul => v1 * v2
   end.
