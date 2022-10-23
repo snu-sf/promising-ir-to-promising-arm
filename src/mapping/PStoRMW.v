@@ -481,6 +481,10 @@ Module PStoRMW.
     - right. ss.
   Qed.
 
+  (* TODO: read from fwd > n
+     - extend sim_memory with invariant that if there is a fwditem on ts, there is a message in PS memory at ts
+     - reading from fwditem never increases PS view
+   *)
   Lemma sim_read
         tid n
         lc1_ps gl1_ps
@@ -1003,7 +1007,7 @@ Module PStoRMW.
         (WW: ww = Ordering.le Ordering.acqrel ordw)
         (DMBSY: Ordering.le Ordering.seqcst ordw ->
                 (join lc1_arm.(Local.vro) lc1_arm.(Local.vwo)).(View.ts) = n)
-        (FULFILLABLE: RMWLocal.fulfillable lc2_arm)
+        (FULFILLABLE: RMWLocal.fulfillable lc2_arm mem_arm)
         (STEP: Local.dmb rr rw wr ww lc1_arm lc2_arm):
     exists lc2_ps gl2_ps,
       (<<STEP_PS: PSLocal.fence_step lc1_ps gl1_ps ordr ordw lc2_ps gl2_ps>>) /\
@@ -1020,10 +1024,12 @@ Module PStoRMW.
       destruct (prm1 loc) eqn:PRM; ss.
       inv MEM1. exploit PRM_COMPLETE; try eassumption. s. i. des.
       exploit FULFILLABLE; try eassumption. s. i. des.
-      clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED LT_VCAP.
-      rewrite H, orb_true_r in LT_VRN. ss.
+      clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED LT_VCAP LT_COH.
+      replace (Ordering.le Ordering.acqrel ordw)
+        with true in * by (destruct ordw; ss).
+      rewrite orb_true_r in LT_VWN. ss.
       cut (ts < ts); try by nia.
-      eapply le_lt_trans; try apply LT_VRN.
+      eapply le_lt_trans; try apply LT_VWN.
       etrans; try apply LE.
       rewrite <- DMBSY; ss.
       etrans; [|apply join_r].
@@ -1246,7 +1252,8 @@ Module PStoRMW.
         (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
         (WF1_ARM: RMWLocal.wf tid (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1))
         (STEP_ARM: RMWExecUnit.state_step (Some n) tid eu1 eu2)
-        (READ_LE: le eu2.(RMWExecUnit.local).(Local.vro).(View.ts) n):
+        (VRO: le eu2.(RMWExecUnit.local).(Local.vro).(View.ts) n)
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
       (<<SIM2: sim_thread tid n th2_ps eu2>>).
@@ -1266,9 +1273,12 @@ Module PStoRMW.
 
     { (* read *)
       exploit sim_read; try exact STEP; eauto.
-      { admit. }
+      { etrans; eauto. inv STEP. ss.
+        admit. (* TODO: read from fwd > n *)
+      }
       i. des.
-      - admit.
+      - exploit (FULFILLABLE ts); try by (inv STEP; ss). i. des.
+        admit.
       - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst.
         esplits.
         + econs 2; try refl.
@@ -1316,7 +1326,6 @@ Module PStoRMW.
 
     { (* dmb *)
       exploit sim_dmb; try exact STEP; eauto.
-      { admit. }
       { admit. }
       { admit. }
       i. des. esplits.
