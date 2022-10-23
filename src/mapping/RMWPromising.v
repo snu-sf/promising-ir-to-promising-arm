@@ -306,10 +306,12 @@ Section RMWLocal.
         destruct ww; s; try apply bot_spec. apply join_r.
   Qed.
 
-  Definition fulfillable (lc: Local.t (A:=A)): Prop :=
+  Definition fulfillable (lc: Local.t (A:=A)) (mem: Memory.t): Prop :=
     forall ts (PROMISED: Promises.lookup ts lc.(Local.promises) = true),
-      (<<LT_VRN: lt lc.(Local.vrn).(View.ts) ts>>) /\
-      (<<LT_VCAP: lt lc.(Local.vcap).(View.ts) ts>>).
+      (<<LT_VWN: lt lc.(Local.vwn).(View.ts) ts>>) /\
+      (<<LT_VCAP: lt lc.(Local.vcap).(View.ts) ts>>) /\
+      (<<LT_COH: forall msg (GET: Memory.get_msg ts mem = Some msg),
+          lt (lc.(Local.coh) msg.(Msg.loc)).(View.ts) ts>>).
 End RMWLocal.
 End RMWLocal.
 

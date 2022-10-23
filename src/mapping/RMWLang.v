@@ -120,7 +120,7 @@ Section RMWState.
            (mk stmts' rmap)
   | step_dowhile
       s cond stmts rmap stmts'
-      (STMTS: stmts' = s ++ (rmw_stmt_if cond ((rmw_stmt_dowhile s cond) :: nil) nil) :: stmts):
+      (STMTS: stmts' = s ++ [rmw_stmt_if cond ((rmw_stmt_dowhile s cond) :: stmts) stmts]):
       step RMWEvent.internal
            (mk ((rmw_stmt_dowhile s cond)::stmts) rmap)
            (mk stmts' rmap)

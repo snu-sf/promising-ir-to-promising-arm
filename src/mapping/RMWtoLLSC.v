@@ -78,7 +78,7 @@ Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
       [stmt_dowhile
          [stmt_instr (instr_load true ordr tmp1 eloc);
           stmt_instr (instr_store true ordw tmp2 eloc (expr_op2 op_add (expr_reg tmp1) eadd))]
-         (expr_op1 op_not (expr_reg tmp2));
+         (expr_reg tmp2);
        stmt_if (expr_reg tmp1) [] [];
        stmt_instr (instr_assign res (expr_reg tmp1))]
   | rmw_stmt_instr (rmw_instr_dmb rr rw wr ww) =>

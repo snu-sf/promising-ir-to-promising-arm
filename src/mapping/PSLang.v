@@ -176,7 +176,7 @@ Module State.
       rf s cond stmts:
       step ProgramEvent.silent
            (mk rf ((Stmt.dowhile s cond)::stmts))
-           (mk rf (s ++ (Stmt.ite cond ((Stmt.dowhile s cond)::nil) nil) :: stmts))
+           (mk rf (s ++ [Stmt.ite cond ((Stmt.dowhile s cond)::stmts) stmts]))
   .
 
   Inductive opt_step: forall (e:ProgramEvent.t) (st1 st2:t), Prop :=
