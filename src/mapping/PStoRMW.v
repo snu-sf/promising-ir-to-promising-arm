@@ -247,7 +247,11 @@ Module PStoRMW.
               (<<LOC: loc = Zpos loc_ps>>) /\
               (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val released na)>>) /\
               (<<REL_FWD: if (lc_arm.(Local.fwdbank) loc).(FwdItem.ex)
-                          then PSView.opt_le released (Some lc_ps.(PSLocal.tview).(PSTView.acq))
+                          then forall loc, PSTime.le
+                                        ((PSView.unwrap released).(View.rlx) loc)
+                                        (ntt (View.ts (join (join lc_arm.(Local.vrn) lc_arm.(Local.vro))
+                                                            (lc_arm.(Local.coh) (Zpos loc)))))
+                            (* PSView.opt_le released (Some lc_ps.(PSLocal.tview).(PSTView.acq)) *)
                           else PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
@@ -1413,6 +1417,7 @@ Module PStoRMW.
           i. apply PF in H. destruct ordw_ps; ss.
         }
         { (* TODO: in PS, if a message is written by na/pln, message view = bot *)
+          inv STEP_PS0. ss.
           admit.
         }
         { i. inv STEP_PS0. ss.
