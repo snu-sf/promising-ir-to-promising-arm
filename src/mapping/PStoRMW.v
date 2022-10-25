@@ -1269,6 +1269,38 @@ Module PStoRMW.
     - inv MEM1. ss.
   Qed.
 
+  Lemma read_ts_coh
+        tid (lc1 lc2: Local.t (A:=unit)) mem
+        ex ord vloc res ts
+        (WF: RMWLocal.wf tid lc1 mem)
+        (READ: Local.read ex ord vloc res ts lc1 mem lc2):
+    le ts (lc2.(Local.coh) vloc.(ValA.val)).(View.ts).
+  Proof.
+    inv READ. ss.
+    unfold fun_add. condtac; ss; try congr. clear e X.
+    unfold FwdItem.read_view. condtac; ss.
+    - apply andb_prop in X. des.
+      revert X. unfold proj_sumbool. condtac; ss.
+      i. r in e. subst. clear X1.
+      etrans; [apply WF|]. apply join_l.
+    - etrans; [|apply join_r]. apply join_r.
+  Qed.
+
+  Lemma update_ts
+        tid (lc1 lc2 lc3: Local.t (A:=unit)) mem
+        exr ordr vlocr vold ts_old
+        exw ordw vlocw vnew res ts_new view_pre
+        (WF: RMWLocal.wf tid lc1 mem)
+        (READ: Local.read exr ordr vlocr vold ts_old lc1 mem lc2)
+        (FULFILL: Local.fulfill exw ordw vlocw vnew res ts_new tid view_pre lc2 mem lc3)
+        (LOC: vlocr.(ValA.val) = vlocw.(ValA.val)):
+    ts_old < ts_new.
+  Proof.
+    exploit read_ts_coh; eauto. i.
+    eapply Nat.le_lt_trans; try exact x0.
+    rewrite LOC. inv FULFILL. inv WRITABLE. ss.
+  Qed.
+
   Lemma sim_thread_step
         tid n th1_ps eu1 eu2
         (SIM1: sim_thread tid n th1_ps eu1)
@@ -1297,8 +1329,21 @@ Module PStoRMW.
 
     { (* read *)
       exploit sim_read; try exact STEP; eauto. i. des.
-      - exploit (FULFILLABLE ts); try by (inv STEP; ss). i. des.
-        admit.
+      - exfalso.
+        exploit (FULFILLABLE ts); try by (inv STEP; ss). i. des.
+        dup WF1_ARM. inv WF1_ARM0.
+        exploit PRM; eauto. i. des.
+        clear COH VRN VWN FWD PRM.
+        exploit LT_COH; eauto. i.
+        exploit read_ts_coh; eauto. i.
+        clear - STEP GET x0 x1.
+        inv STEP. ss.
+        unfold Memory.get_msg in *. destruct ts; ss.
+        revert MSG. unfold Memory.read. ss.
+        rewrite GET. condtac; ss. i.
+        rewrite e in *.
+        eapply Nat.lt_strorder.
+        eapply Nat.lt_le_trans; [exact x0|]. apply x1.
       - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst.
         esplits.
         + econs 2; try refl.
@@ -1327,18 +1372,54 @@ Module PStoRMW.
     }
 
     { (* fadd *)
+      exploit update_ts; eauto. intro TS.
       exploit sim_read; try exact STEP_READ; eauto.
-      { admit. }
+      { exploit (Local.control_incr (A:=unit)); eauto. i.
+        exploit (Local.fulfill_incr (A:=unit)); eauto. i.
+        etrans; [apply x1|]. etrans; [apply x0|]. ss.
+      }
       i. des.
-      - admit.
+      - exfalso.
+        exploit (FULFILLABLE ts_old).
+        { inv STEP_CONTROL; ss.
+          inv STEP_FULFILL; ss.
+          rewrite Promises.unset_o.
+          condtac; try by (inv STEP_READ; ss); ss.
+          r in e. subst. nia.
+        }
+        i. des.
+        dup WF1_ARM. inv WF1_ARM0.
+        exploit PRM; eauto. i. des.
+        clear COH VRN VWN FWD PRM.
+        exploit LT_COH; eauto. i.
+        eapply Nat.lt_strorder.
+        etrans; try exact x0.
+        eapply Nat.lt_le_trans; try exact TS.
+        exploit (Local.control_incr (A:=unit)); eauto. i.
+        etrans; [|apply x1].
+        replace (Msg.loc msg) with (ValA.val vloc); cycle 1.
+        { clear - STEP_READ GET.
+          inv STEP_READ. ss.
+          revert GET. unfold Memory.get_msg. destruct ts_old; ss. i.
+          revert MSG. unfold Memory.read. s. rewrite GET. condtac; ss.
+        }
+        clear - STEP_FULFILL.
+        inv STEP_FULFILL. ss.
+        unfold fun_add. condtac; ss. congr.
       - exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des.
         exploit (RMWLocal.read_wf (A:=unit)); eauto. i.
         exploit sim_fulfill; try exact STEP_FULFILL; eauto; ss.
         { Transparent Ordering.le.
           i. apply PF in H. destruct ordw_ps; ss.
         }
-        { admit. }
-        { admit. }
+        { (* TODO: in PS, if a message is written by na/pln, message view = bot *)
+          admit.
+        }
+        { i. inv STEP_PS0. ss.
+          inv SIM_MEM. exploit RELEASED; eauto.
+          etrans; try apply x1. econs.
+          apply lt_ntt. ss.
+        }
         i. des.
         admit.
       - admit.
