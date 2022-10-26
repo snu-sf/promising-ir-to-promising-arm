@@ -252,7 +252,7 @@ Module PStoRMW.
                                         (ntt (View.ts (join (join lc_arm.(Local.vrn) lc_arm.(Local.vro))
                                                             (lc_arm.(Local.coh) (Zpos loc)))))
                             (* PSView.opt_le released (Some lc_ps.(PSLocal.tview).(PSTView.acq)) *)
-                          else PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>))
+                          else PSView.le (View.unwrap released) (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps)>>))
         (RELEASED: forall loc from to val released na
                           (GET: PSMemory.get loc to mem_ps = Some (from, Message.message val released na)),
           forall loc', PSTime.le ((View.unwrap released).(View.rlx) loc') to)
@@ -451,11 +451,18 @@ Module PStoRMW.
       (<<VAL: sim_val val val_arm>>) /\
       (<<REL_FWD: (lc_arm.(Local.fwdbank) loc).(FwdItem.ts) = ts ->
                   if (lc_arm.(Local.fwdbank) loc).(FwdItem.ex)
-                  then PSView.opt_le released (Some lc_ps.(PSLocal.tview).(PSTView.acq))
-                  else PSView.opt_le released (Some (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps))>>).
+                  then forall loc, PSTime.le
+                                     ((PSView.unwrap released).(View.rlx) loc)
+                                     (ntt (View.ts (join (join lc_arm.(Local.vrn) lc_arm.(Local.vro))
+                                                      (lc_arm.(Local.coh) (Zpos loc)))))
+                  else PSView.le (View.unwrap released) (lc_ps.(PSLocal.tview).(PSTView.rel) loc_ps)>>).
   Proof.
     unfold Memory.read in *. destruct ts; ss.
-    { inv READ. right. right. esplits; eauto. condtac; ss. }
+    { inv READ. right. right. esplits; eauto.
+      condtac; ss; i.
+      - apply PSTime.bot_spec.
+      - apply PSView.bot_spec.
+    }
     revert READ.
     destruct (List.nth_error mem_arm ts) eqn:Heq; ss.
     condtac; ss. destruct t. ss. r in e. i. inv READ. clear X.
@@ -527,15 +534,21 @@ Module PStoRMW.
     exploit (Local.read_incr (A:=unit)); eauto. i.
     inv STEP.
     exploit sim_memory_read; eauto; try apply GL_WF1_PS.
-    { ss. etrans; try exact VRO.
-      do 2 (etrans; [|apply join_r]). refl.
-    }
+    { ss. etrans; try exact VRO. ets. }
     i. des; auto.
     { (* race with a promise *)
       ss. right. right.
-      esplits; eauto; [|econs; ss; apply MEM1].
-      eapply sim_tview_le; try exact TVIEW1; ss; i.
-      eapply join_le; try apply View.order; try refl. apply TVIEW1.
+      esplits; eauto.
+      - eapply sim_tview_le; try exact TVIEW1; ss; i.
+        eapply join_le; try apply View.order; try refl. apply TVIEW1.
+      - econs; s; try apply MEM1. i.
+        apply MEM1 in FWD. des.
+        esplits; eauto. condtac; ss. i.
+        etrans; [apply REL_FWD|]. apply le_ntt.
+        eapply join_le; [apply Time.order|..].
+        + eapply join_le; try apply Time.order.
+        + unfold fun_add. condtac; ets. ss.
+          rewrite e. ss. ets.
     }
 
     { (* normal read *)
@@ -551,6 +564,7 @@ Module PStoRMW.
           etrans; [apply TVIEW1|]. apply le_ntt. ss.
           eapply join_le; try apply Time.order. apply x0.
         }
+
         { (* cur view *)
           repeat apply PSTime.join_spec.
           { etrans; [apply TVIEW1|]. apply le_ntt. ss.
@@ -563,36 +577,28 @@ Module PStoRMW.
             unfold fun_add. condtac; ss; try apply PSTime.bot_spec.
             subst. rewrite LOC. condtac; ss; try congr. apply le_ntt.
             etrans; [|apply join_r].
-            exploit (wf_arm_fwd ts); eauto. i. des.
-            - etrans; [|apply join_l]. apply x2.
-            - etrans; [|apply join_r]. etrans; [|apply join_r]. apply x2.
+            exploit (wf_arm_fwd ts); eauto. i. des; ets.
           }
           { condtac; ss; try apply PSTime.bot_spec.
-            destruct released; s; try apply PSTime.bot_spec.
             unfold FwdItem.read_view. condtac; ss.
             - apply andb_prop in X0. des.
+              revert X0. unfold proj_sumbool. condtac; ss. r in e. i. clear X2.
               rewrite negb_true_iff in X1.
-              exploit REL_FWD.
-              { destruct (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc)) == ts); ss. }
-              condtac.
-              + i. inv x2.
-                rewrite andb_true_l in X1.
+              exploit REL_FWD; ss. condtac; i.
+              + rewrite andb_true_l in X1.
                 apply orb_false_elim in X1. des.
                 destruct ord; ss.
-              + i. inv x2.
-                etrans; [apply LE|].
+              + etrans; [apply x2|].
                 etrans; [apply LC_WF1_PS|].
                 etrans; [apply TVIEW1|].
                 apply le_ntt. ss.
                 eapply join_le; try apply Time.order.
                 unfold fun_add. condtac; ss.
-                rewrite e. apply join_l.
+                rewrite e0. apply join_l.
             - unfold ifc. repeat (condtac; try by destruct ord; ss).
               inv MEM1. exploit RELEASED; eauto. i.
-              clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
-              etrans; try apply x2. apply le_ntt.
-              etrans; [|apply join_l].
-              etrans; apply join_r.
+              clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED.
+              etrans; try apply x2. apply le_ntt. ets.
           }
         }
 
@@ -614,23 +620,17 @@ Module PStoRMW.
             - etrans; [|apply join_r]. etrans; [|apply join_r]. apply x2.
           }
           { condtac; ss; try apply PSTime.bot_spec.
-            destruct released; s; try apply PSTime.bot_spec.
             unfold FwdItem.read_view. condtac; ss.
             - apply andb_prop in X0. des.
+              revert X0. unfold proj_sumbool. condtac; ss. r in e. i. clear X2.
               rewrite negb_true_iff in X1.
-              exploit REL_FWD.
-              { destruct (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc)) == ts); ss. }
-              condtac.
-              + i. inv x2.
-                etrans; [apply LE|].
-                etrans; [apply TVIEW1|].
-                apply le_ntt. ss.
+              exploit REL_FWD; ss. condtac; i.
+              + etrans; [apply x2|]. apply le_ntt.
                 eapply join_le; [apply Time.order|..].
-                * eapply join_le; apply Time.order.
+                * eapply join_le; try apply Time.order.
                 * unfold fun_add. condtac; ss.
-                  rewrite e. apply join_l.
-              + i. inv x2.
-                etrans; [apply LE|].
+                  rewrite e0. apply join_l.
+              + etrans; [apply x2|].
                 etrans; [apply LC_WF1_PS|].
                 etrans; [apply LC_WF1_PS|].
                 etrans; [apply TVIEW1|].
@@ -638,33 +638,29 @@ Module PStoRMW.
                 eapply join_le; [apply Time.order|..].
                 * eapply join_le; apply Time.order.
                 * unfold fun_add. condtac; ss.
-                  rewrite e. apply join_l.
+                  rewrite e0. apply join_l.
             - unfold ifc. repeat (condtac; try by destruct ord; ss).
               + inv MEM1. exploit RELEASED; eauto. i.
-                clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
-                etrans; try apply x2. apply le_ntt.
-                etrans; [|apply join_l].
-                etrans; [|apply join_r].
-                etrans; [|apply join_r].
-                apply join_r.
+                clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED.
+                etrans; try apply x2. apply le_ntt. ets.
               + inv MEM1. exploit RELEASED; eauto. i.
-                clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
-                etrans; try apply x2. apply le_ntt.
-                etrans; [|apply join_l].
-                etrans; [|apply join_r].
-                etrans; [|apply join_r].
-                apply join_r.
+                clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED.
+                etrans; try apply x2. apply le_ntt. ets.
           }
         }
 
-        { eapply join_le; try apply View.order; try refl. apply TVIEW1. }
+        { (* VNEW *)
+          eapply join_le; try apply View.order; try refl. apply TVIEW1.
+        }
       }
 
       { inv MEM1. econs; s; eauto. i.
         exploit FWD; eauto. i. des.
-        esplits; eauto. condtac; ss.
-        etrans; eauto. econs.
-        etrans; [|apply View.join_l]. apply View.join_l.
+        esplits; eauto. condtac; ss. i.
+        etrans; eauto. i. apply le_ntt.
+        eapply join_le; [apply Time.order|..].
+        - eapply join_le; try apply Time.order.
+        - unfold fun_add. condtac; ss. rewrite e. ets.
       }
     }
   Qed.
@@ -735,7 +731,10 @@ Module PStoRMW.
         (LOC: vloc.(ValA.val) = Zpos loc)
         (RELEASEDM_WF: View.opt_wf releasedm)
         (RELEASEDM1: if ex
-                     then View.opt_le releasedm (Some lc1_ps.(PSLocal.tview).(PSTView.acq))
+                     then forall loc, PSTime.le
+                                        ((PSView.unwrap releasedm).(View.rlx) loc)
+                                        (ntt (View.ts (join (join lc1_arm.(Local.vrn) lc1_arm.(Local.vro))
+                                                         (lc1_arm.(Local.coh) (Zpos loc)))))
                      else releasedm = None)
         (RELEASEDM2: forall loc', PSTime.le ((View.unwrap releasedm).(View.rlx) loc') (ntt ts))
         (STEP: Local.fulfill ex ord_arm vloc vval res ts tid view_pre lc1_arm mem_arm lc2_arm):
@@ -752,7 +751,7 @@ Module PStoRMW.
     rewrite LOC in LOC0. symmetry in LOC0. inv LOC0.
     unguardH x0. des; try congr. subst.
     exploit PRM_SOUND; eauto. s. i. des.
-    clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED TID.
+    clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED TID.
     rewrite MSG in *. inv GET_ARM. ss.
     rewrite LOC in LOC0. symmetry in LOC0. inv LOC0.
     dup LC_WF1_PS. inv LC_WF1_PS0.
@@ -955,36 +954,58 @@ Module PStoRMW.
       }
 
       { (* FWD *)
-        revert FWD1. unfold fun_add. condtac; ss.
-        - i. inversion e. subst.
+        revert FWD0. unfold fun_add. condtac; ss.
+        - i. r in e. clear X. subst.
           exploit PSMemory.add_get0; try exact x3. i. des.
           esplits; try exact GET0; ss. condtac.
-          + unfold TView.write_released. condtac; econs.
-            apply PSView.join_spec.
-            * inv RELEASEDM1; ss; try apply PSView.bot_spec.
-              etrans; try exact LE. apply PSView.join_l.
-            * ss. unfold LocFun.add. condtac; ss.
-              condtac; ss; apply PSView.join_spec.
-              { etrans; [apply LC_WF1_PS|]. apply PSView.join_l. }
-              { apply PSView.join_r. }
-              { etrans; [apply LC_WF1_PS|]. s.
-                etrans; [apply LC_WF1_PS|]. apply PSView.join_l.
+          + i. unfold TView.write_released.
+            condtac; try apply PSTime.bot_spec. ss.
+            apply PSTime.join_spec.
+            * etrans; try apply RELEASEDM1. apply le_ntt.
+              eapply join_le; [apply Time.order|..]; try refl.
+              condtac; ss. rewrite e. inv WRITABLE. nia.
+            * unfold LocFun.add. condtac; ss.
+              condtac; ss; apply PSTime.join_spec.
+              { etrans; [apply LC_WF1_PS|].
+                etrans; [apply TVIEW1|].
+                apply le_ntt. s.
+                eapply join_le; [apply Time.order|..]; try refl.
+                condtac; ss. rewrite e0. inv WRITABLE. nia.
               }
-              { apply PSView.join_r. }
+              { unfold TimeMap.singleton, LocFun.add, LocFun.init.
+                condtac; try apply PSTime.bot_spec. subst.
+                rewrite LOC. condtac; ss; try congr.
+                apply le_ntt. ets.
+              }
+              { etrans; [apply LC_WF1_PS|]. s.
+                etrans; [apply LC_WF1_PS|]. s.
+                etrans; [apply TVIEW1|]. apply le_ntt. s.
+                eapply join_le; [apply Time.order|..]; try refl.
+                condtac; ss. rewrite e0. inv WRITABLE. nia.
+              }
+              { unfold TimeMap.singleton, LocFun.add, LocFun.init.
+                condtac; try apply PSTime.bot_spec. subst.
+                rewrite LOC. condtac; ss; try congr.
+                apply le_ntt. ets.
+              }
           + subst.
-            unfold TView.write_released. condtac; econs. ss.
+            unfold TView.write_released.
+            condtac; ss; try apply View.bot_spec.
             unfold LocFun.add. condtac; ss.
             condtac; ss; apply PSView.join_spec; try apply PSView.bot_spec; try refl.
-        - i. exploit FWD0; eauto. i. des.
+        - i. exploit FWD; eauto. i. des.
           exploit PSMemory.remove_get1; try exact GET_PS0; eauto. i. des; ss.
           exploit PSMemory.add_get1; try exact x4; eauto. i.
           esplits; try exact x5; ss.
           condtac.
-          + etrans; try exact REL_FWD. econs. apply PSView.join_l.
-          + etrans; try exact REL_FWD. econs.
-            unfold LocFun.add. condtac; try refl. subst.
-            condtac; try apply PSView.join_l.
-            etrans; [|apply PSView.join_l]. apply LC_WF1_PS.
+          + etrans; try apply REL_FWD. apply le_ntt.
+            eapply join_le; [apply Time.order|..]; try refl.
+            condtac; ss. rewrite e. inv WRITABLE. nia.
+          + etrans; try apply REL_FWD. condtac.
+            * unfold LocFun.add. condtac; try refl.
+              etrans; [|apply PSView.join_l]. apply LC_WF1_PS.
+            * unfold LocFun.add. condtac; try refl.
+              subst. apply PSView.join_l.
       }
 
       { (* RELEASED *)
@@ -1235,12 +1256,13 @@ Module PStoRMW.
       inv MEM1. ss. econs; s; eauto. i.
       exploit FWD; eauto. i. des.
       esplits; eauto. condtac; ss.
-      - etrans; eauto. econs. apply PSView.join_l.
-      - etrans; eauto. econs. condtac; ss; try refl.
-        condtac; ss; cycle 1.
-        { condtac; ss; try apply LC_WF1_PS.
-          etrans; apply LC_WF1_PS.
-        }
+      - i. etrans; eauto. apply le_ntt.
+        eapply join_le; [apply Time.order|..]; try refl.
+        apply join_spec; ets.
+      - etrans; eauto. condtac; ss; try refl.
+        repeat (condtac; ss); cycle 1.
+        { etrans; [apply LC_WF1_PS|]. apply LC_WF1_PS. }
+        { apply LC_WF1_PS. }
         unfold TView.write_fence_sc.
         condtac; try by (destruct ordw; ss). s.
         econs; s.
@@ -1305,18 +1327,115 @@ Module PStoRMW.
     rewrite LOC. inv FULFILL. inv WRITABLE. ss.
   Qed.
 
+  Definition ex_strong (loc: Loc.t) (from to: nat) (mem: Memory.t): Prop :=
+    forall ts msg
+           (TS1: from < S ts)
+           (TS2: S ts < to)
+           (MSG: List.nth_error mem ts = Some msg),
+      msg.(Msg.loc) <> loc.
+
+  Lemma update_ex_strong
+        tid (lc1 lc2 lc3: Local.t (A:=unit)) mem
+        ordr vlocr vold ts_old
+        ordw vlocw vnew res ts_new view_pre
+        (WF: RMWLocal.wf tid lc1 mem)
+        (READ: Local.read true ordr vlocr vold ts_old lc1 mem lc2)
+        (FULFILL: Local.fulfill true ordw vlocw vnew res ts_new tid view_pre lc2 mem lc3)
+        (LOC: vlocr.(ValA.val) = vlocw.(ValA.val))
+        (FULFILLABLE: RMWLocal.fulfillable lc3 mem):
+    ex_strong vlocr.(ValA.val) ts_old ts_new mem.
+  Proof.
+    assert (EX: Memory.exclusive tid (ValA.val vlocr) ts_old ts_new mem).
+    { inv READ. inv FULFILL. inv WRITABLE. ss.
+      exploit EX; ss. i. des. inv TSX. ss.
+      rewrite LOC. auto.
+    }
+    ii. destruct msg.
+    destruct (Id.eq_dec tid0 tid); cycle 1.
+    { eapply EX; eauto. nia. }
+    ss. subst.
+    dup WF. inv WF0. clear COH VRN VWN FWD PRM.
+    exploit (PRM_COH (S ts)); eauto; s.
+    { clear - READ TS1 MSG.
+      inv READ.
+      destruct (le_lt_dec (S ts) (View.ts (Local.coh lc1 (ValA.val vlocr)))); ss.
+      exfalso.
+      eapply COH; eauto.
+    }
+    intro PROMISED. clear PRM_COH.
+    assert (PROMISED2: Promises.lookup (S ts) (Local.promises lc3)).
+    { inv READ. inv FULFILL. ss.
+      rewrite Promises.unset_o. condtac; ss.
+      r in e. subst. nia.
+    }
+    exploit FULFILLABLE; eauto. i. des.
+    exploit LT_COH; eauto. s. i.
+    clear - LOC FULFILL TS2 x0.
+    inv FULFILL. inv WRITABLE. ss.
+    revert x0. unfold fun_add. condtac; try congr. s. i. nia.
+  Qed.
+
+  Lemma sim_memory_exclusive
+        told tnew
+        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
+        loc vold msg loc_ps
+        from
+        (SIM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
+        (TS: told < tnew)
+        (OLD: Memory.read loc told mem_arm = Some vold)
+        (NEW: Memory.get_msg tnew mem_arm = Some msg)
+        (EX: ex_strong loc told tnew mem_arm)
+        (LOC1: msg.(Msg.loc) = loc)
+        (LOC2: loc = Zpos loc_ps)
+        (RESERVED: PSMemory.get loc_ps (ntt tnew) mem_ps = Some (from, Message.reserve)):
+    from = ntt told.
+  Proof.
+    dup SIM. inv SIM0.
+    exploit MEM_SOUND; eauto. i. des.
+    clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED x0.
+    rewrite LOC in *. inv LOC2.
+    rewrite GET_PS in *. inv RESERVED.
+    unguard. des; subst.
+    { destruct told; ss.
+      unfold Memory.read in OLD. ss. des_ifs.
+      inv SIM. exploit (MEM_SOUND (S told)); eauto. i. des.
+      clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD RELEASED x0.
+      rewrite e in LOC0. inv LOC0.
+      exploit PSMemory.get_disjoint; [exact GET_PS|exact GET_PS0|]. i. des.
+      { apply ntt_inj in x0. subst. nia. }
+      exfalso. apply (x0 (ntt (S told))); econs; ss; try refl.
+      - eapply TimeFacts.le_lt_lt; try apply PSTime.bot_spec.
+        apply PSTime.incr_spec.
+      - exploit lt_ntt; try exact TS. s. i. timetac.
+    }
+    { apply ntt_lt in TS0.
+      destruct (le_lt_dec fts told); cycle 1.
+      { unfold Memory.get_msg in GET_FROM_ARM.
+        destruct fts; ss.
+        exploit EX; try apply GET_FROM_ARM; ss; try nia.
+      }
+      inv l; ss. exfalso.
+      unfold Memory.read in OLD. ss. des_ifs.
+      exploit LATEST; try exact Heq; ss; try nia.
+    }
+  Qed.
+
   Lemma sim_thread_step
         tid n th1_ps eu1 eu2
         (SIM1: sim_thread tid n th1_ps eu1)
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
         (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
         (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
         (WF1_ARM: RMWLocal.wf tid (RMWExecUnit.local eu1) (RMWExecUnit.mem eu1))
-        (STEP_ARM: RMWExecUnit.state_step (Some n) tid eu1 eu2)
+        (STEP_ARM: RMWExecUnit.state_step_dmbsy_exact (Some n) n tid eu1 eu2)
         (VRO: le eu2.(RMWExecUnit.local).(Local.vro).(View.ts) n)
         (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      (<<SIM2: sim_thread tid n th2_ps eu2>>).
+      ((<<SIM2: sim_thread tid n th2_ps eu2>>) \/
+       exists e_ps th3_ps,
+         (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+         (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
   Proof.
     destruct th1_ps as [st1_ps lc1_ps gl1_ps].
     destruct eu1 as [st1_arm lc1_arm mem1_arm].
@@ -1328,7 +1447,7 @@ Module PStoRMW.
       esplits.
       - econs 2; try refl.
         econs 1; [econs 2; [|econs 1]|]; eauto.
-      - ss.
+      - left. ss.
     }
 
     { (* read *)
@@ -1352,12 +1471,12 @@ Module PStoRMW.
         esplits.
         + econs 2; try refl.
           econs 1; [econs 2; [|econs 2]|]; eauto.
-        + ss.
+        + left. ss.
       - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst.
         esplits.
         + econs 2; try refl.
           econs 1; [econs 2; [|econs 8]|]; eauto.
-        + ss.
+        + left. ss.
     }
 
     { (* fulfill *)
@@ -1372,7 +1491,7 @@ Module PStoRMW.
         { econs 1; [econs 1; econs 3|]; eauto. }
         econs 2; try refl.
         econs 1; [econs 2; [|econs 3]|]; eauto.
-      - ss.
+      - left. ss.
     }
 
     { (* fadd *)
@@ -1383,7 +1502,8 @@ Module PStoRMW.
         etrans; [apply x1|]. etrans; [apply x0|]. ss.
       }
       i. des.
-      - exfalso.
+      { (* read message is a promise *)
+        exfalso.
         exploit (FULFILLABLE ts_old).
         { inv STEP_CONTROL; ss.
           inv STEP_FULFILL; ss.
@@ -1410,15 +1530,40 @@ Module PStoRMW.
         clear - STEP_FULFILL.
         inv STEP_FULFILL. ss.
         unfold fun_add. condtac; ss. congr.
-      - exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des.
+      }
+
+      { (* normal read *)
+        exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des.
         exploit (RMWLocal.read_wf (A:=unit)); eauto. i.
         exploit sim_fulfill; try exact STEP_FULFILL; eauto; ss.
         { Transparent Ordering.le.
           i. apply PF in H. destruct ordw_ps; ss.
         }
-        { (* TODO: in PS, if a message is written by na/pln, message view = bot *)
-          inv STEP_PS0. ss.
-          admit.
+        { clear - LOC SIM_TVIEW SIM_MEM LC_WF1_PS STEP_READ STEP_PS0 TVIEW2 MEM2.
+          i. inv STEP_READ. ss.
+          unfold FwdItem.read_view. condtac; s.
+          - apply andb_prop in X. des.
+            revert X. unfold proj_sumbool. condtac; ss. r in e. i. clear X0 X X1.
+            inv SIM_MEM. clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
+            exploit (FWD (Zpos loc_ps)); eauto. i. des. inv LOC0.
+            rewrite LOC in *.
+            inv STEP_PS0. rewrite GET_PS in *. inv GET.
+            revert REL_FWD. condtac; i.
+            + etrans; try apply REL_FWD. apply le_ntt. s.
+              eapply join_le; [apply Time.order|..].
+              * eapply join_le; [apply Time.order|..]; ets.
+              * unfold fun_add. condtac; ss. rewrite e. ets.
+            + etrans; try apply REL_FWD.
+              etrans; [apply LC_WF1_PS|].
+              etrans; [apply LC_WF1_PS|].
+              etrans; [apply SIM_TVIEW|].
+              apply le_ntt. s.
+              eapply join_le; [apply Time.order|..].
+              * eapply join_le; [apply Time.order|..]; ets.
+              * unfold fun_add. condtac; ss. rewrite e. ets.
+          - inv STEP_PS0. ss.
+            inv MEM2. exploit RELEASED; eauto. i.
+            etrans; eauto. apply le_ntt. ets.
         }
         { i. inv STEP_PS0. ss.
           inv SIM_MEM. exploit RELEASED; eauto.
@@ -1426,18 +1571,68 @@ Module PStoRMW.
           apply lt_ntt. ss.
         }
         i. des.
-        admit.
-      - admit.
+        exploit reorder_read_cancel; eauto. i. des.
+        exploit sim_val_eq_inv; [exact VAL|exact VOLD|]. i. subst.
+        exploit (@sim_memory_exclusive ts_old ts_new); try exact SIM_MEM.
+        { clear - WF1_ARM STEP_READ STEP_FULFILL.
+          eapply le_lt_trans; cycle 1.
+          { inv STEP_FULFILL. inv WRITABLE. apply COH. }
+          clear STEP_FULFILL. inv STEP_READ. ss.
+          unfold FwdItem.read_view. condtac.
+          - apply andb_prop in X. des.
+            revert X. unfold proj_sumbool. condtac; ss.
+            r in e. i. clear X X0 X1. subst.
+            inv WF1_ARM. etrans; try apply FWD.
+            unfold fun_add. condtac; try congr. s.
+            apply join_l.
+          - unfold fun_add. condtac; ss; try congr. ets.
+        }
+        { instantiate (1:=vold.(ValA.val)).
+          instantiate (1:=vloc.(ValA.val)).
+          inv STEP_READ. ss.
+        }
+        { instantiate (1:=Msg.mk vloc.(ValA.val) vnew.(ValA.val) tid).
+          inv STEP_FULFILL. ss.
+        }
+        { hexploit update_ex_strong; try exact STEP_READ; try exact STEP_FULFILL; ss.
+          eapply RMWLocal.control_fulfillable; eauto.
+        }
+        { ss. }
+        { eauto. }
+        { instantiate (1:=from).
+          inv CANCEL_PS. inv CANCEL.
+          exploit PSMemory.remove_get0; try exact MEM. i. des. ss.
+        }
+        i. subst. esplits.
+        + econs 2.
+          { econs; [econs 1; econs 3|]; eauto. }
+          econs 2; try refl.
+          econs; [econs 2; [|econs 4]|]; eauto.
+          inv VNEW. eauto.
+        + left. econs; ss.
+          * exploit (Local.control_incr (A:=unit)); eauto. i.
+            eapply sim_tview_le; eauto.
+            inv STEP_CONTROL. ss. apply TVIEW0.
+          * inv STEP_CONTROL. inv MEM0. econs; ss.
+      }
+
+      { (* racy read *)
+        inv STEP_PS0. esplits; try refl.
+        right. esplits.
+        - econs 2; [|econs 10]; eauto.
+        - ss.
+      }
     }
 
     { (* dmb *)
       exploit sim_dmb; try exact STEP; eauto.
-      { admit. }
-      { admit. }
+      { i. apply DMBSY. rewrite H.
+        destruct ordr_ps, ordw_ps; ss.
+      }
       i. des. esplits.
       - econs 2; try refl.
         econs; [econs 2; [|econs 5]|]; eauto.
-      - ss.
+      - left. ss.
     }
 
     { (* control *)
@@ -1445,9 +1640,9 @@ Module PStoRMW.
       esplits.
       - econs 2; try refl.
         econs; [econs 2; [|econs 1]|]; eauto.
-      - ss.
+      - left. ss.
     }
-  Admitted.
+  Qed.
 
   Variant sim_thread_exec (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=

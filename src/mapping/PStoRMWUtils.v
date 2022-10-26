@@ -163,3 +163,18 @@ Section DMBSY.
       rewrite H3 in x1. nia.
   Qed.
 End DMBSY.
+
+Lemma reorder_read_cancel
+      lc1 gl1 loc1 to1 val released ord lc2
+      loc2 from2 to2 lc3 gl3
+      (STEP1: PSLocal.read_step lc1 gl1 loc1 to1 val released ord lc2)
+      (STEP2: PSLocal.cancel_step lc2 gl1 loc2 from2 to2 lc3 gl3):
+  exists lc2',
+    (<<STEP1: PSLocal.cancel_step lc1 gl1 loc2 from2 to2 lc2' gl3>>) /\
+    (<<STEP2: PSLocal.read_step lc2' gl3 loc1 to1 val released ord lc3>>).
+Proof.
+  destruct lc1 as [tview1 prm1 rsv1].
+  inv STEP1. inv STEP2. inv CANCEL. ss.
+  exploit PSMemory.remove_get1; try exact GET; eauto. i. des; ss.
+  esplits; econs; eauto.
+Qed.

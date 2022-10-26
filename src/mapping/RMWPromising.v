@@ -26,6 +26,16 @@ Require Import PromisingArch.mapping.RMWLang.
 Set Implicit Arguments.
 
 
+Ltac etl := etrans; [|apply join_l].
+Ltac etr := etrans; [|apply join_r].
+Ltac ets :=
+  s;
+  (try refl);
+  (try eassumption);
+  (try by (etl; ets));
+  (try by (etr; ets)).
+
+
 Section Eqts.
   Context `{A: Type, B: Type, _: orderC A eq, _: orderC B eq}.
 
@@ -234,6 +244,11 @@ Section RMWLocal.
         (FWD: forall loc,
             le (lc.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc.(Local.coh) loc)))
         (PRM: Promises.sound tid (Local.promises lc) mem)
+        (PRM_COH: forall ts msg
+                         (MSG: Memory.get_msg ts mem = Some msg)
+                         (TID: msg.(Msg.tid) = tid)
+                         (TS: (lc.(Local.coh) msg.(Msg.loc)).(View.ts) < ts),
+            Promises.lookup ts lc.(Local.promises))
   .
 
   Lemma read_wf
@@ -264,6 +279,10 @@ Section RMWLocal.
     - etrans; eauto.
       unfold fun_add. condtac; ss.
       rewrite e. apply join_l.
+    - eapply PRM_COH; eauto.
+      eapply le_lt_trans; try exact TS.
+      unfold fun_add. condtac; ss.
+      rewrite e. ets.
   Qed.
 
   Lemma fulfill_wf
@@ -284,6 +303,14 @@ Section RMWLocal.
     - etrans; eauto.
       eapply join_le; try apply View.order. refl.
     - unfold fun_add. condtac; ss.
+    - rewrite Promises.unset_o. condtac; ss.
+      + r in e. subst.
+        destruct msg. rewrite MSG in *. inv MSG0. ss.
+        revert TS. unfold fun_add. condtac; try congr. s. nia.
+      + eapply PRM_COH; eauto.
+        eapply le_lt_trans; try exact TS.
+        unfold fun_add. condtac; ss.
+        rewrite e. inv WRITABLE. nia.
   Qed.
 
   Lemma dmb_wf
@@ -306,12 +333,125 @@ Section RMWLocal.
         destruct ww; s; try apply bot_spec. apply join_r.
   Qed.
 
+  Lemma control_wf
+        tid mem
+        ctrl lc1 lc2
+        (CONTROL: Local.control ctrl lc1 lc2)
+        (WF: wf tid lc1 mem):
+    wf tid lc2 mem.
+  Proof.
+    inv WF. inv CONTROL. econs; ss.
+  Qed.
+
+  Lemma step_wf
+        n e tid mem lc1 lc2
+        (STEP: step n e tid mem lc1 lc2)
+        (WF: wf tid lc1 mem):
+    wf tid lc2 mem.
+  Proof.
+    inv STEP; ss.
+    - eauto using read_wf.
+    - eauto using fulfill_wf.
+    - eapply control_wf; try exact STEP_CONTROL.
+      eapply fulfill_wf; try exact STEP_FULFILL.
+      eapply read_wf; eauto.
+    - eauto using dmb_wf.
+    - eauto using control_wf.
+  Qed.
+
   Definition fulfillable (lc: Local.t (A:=A)) (mem: Memory.t): Prop :=
     forall ts (PROMISED: Promises.lookup ts lc.(Local.promises) = true),
       (<<LT_VWN: lt lc.(Local.vwn).(View.ts) ts>>) /\
       (<<LT_VCAP: lt lc.(Local.vcap).(View.ts) ts>>) /\
       (<<LT_COH: forall msg (GET: Memory.get_msg ts mem = Some msg),
           lt (lc.(Local.coh) msg.(Msg.loc)).(View.ts) ts>>).
+
+  Lemma read_fulfillable
+        ex ord vloc res ts lc1 mem lc2
+        (READ: Local.read ex ord vloc res ts lc1 mem lc2)
+        (FULFILLABLE: fulfillable lc2 mem):
+    fulfillable lc1 mem.
+  Proof.
+    ii. exploit (FULFILLABLE ts0).
+    { inv READ. ss. }
+    i. des.
+    exploit Local.read_incr; eauto. i.
+    splits; i.
+    - eapply le_lt_trans; try exact LT_VWN. apply x0.
+    - eapply le_lt_trans; try exact LT_VCAP. apply x0.
+    - exploit LT_COH; eauto. i.
+      eapply le_lt_trans; try exact x1. apply x0.
+  Qed.
+
+  Lemma fulfill_fulfillable
+        ex ord vloc vval res ts tid view_pre lc1 mem lc2
+        (FULFILL: Local.fulfill ex ord vloc vval res ts tid view_pre lc1 mem lc2)
+        (FULFILLABLE: fulfillable lc2 mem):
+    fulfillable lc1 mem.
+  Proof.
+    ii. destruct (Promises.lookup ts0 (Local.promises lc2)) eqn:PROMISED2.
+    - exploit FULFILLABLE; eauto. i. des.
+      exploit Local.fulfill_incr; eauto. i.
+      splits; i.
+      + eapply le_lt_trans; try exact LT_VWN. apply x0.
+      + eapply le_lt_trans; try exact LT_VCAP. apply x0.
+      + exploit LT_COH; eauto. i.
+        eapply le_lt_trans; try exact x1. apply x0.
+    - inv FULFILL. inv WRITABLE. ss.
+      revert PROMISED2. rewrite Promises.unset_o. condtac; try congr.
+      r in e. i. subst. clear X PROMISED2 EX.
+      splits; i.
+      + eapply le_lt_trans; try exact EXT. ets.
+      + eapply le_lt_trans; try exact EXT. ets.
+      + destruct msg. rewrite GET in *. inv MSG. ss.
+  Qed.
+
+  Lemma dmb_fulfillable
+        mem
+        rr rw wr ww lc1 lc2
+        (DMB: Local.dmb rr rw wr ww lc1 lc2)
+        (FULFILLABLE: fulfillable lc2 mem):
+    fulfillable lc1 mem.
+  Proof.
+    ii. exploit (FULFILLABLE ts).
+    { inv DMB. ss. }
+    i. des.
+    exploit Local.dmb_incr; eauto. i.
+    splits; i.
+    - eapply le_lt_trans; try exact LT_VWN. apply x0.
+    - eapply le_lt_trans; try exact LT_VCAP. apply x0.
+    - exploit LT_COH; eauto. i.
+      eapply le_lt_trans; try exact x1. apply x0.
+  Qed.
+
+  Lemma control_fulfillable
+        mem
+        ctrl lc1 lc2
+        (CONTROL: Local.control ctrl lc1 lc2)
+        (FULFILLABLE: fulfillable lc2 mem):
+    fulfillable lc1 mem.
+  Proof.
+    inv CONTROL. ii.
+    exploit FULFILLABLE; eauto. s. i. des.
+    splits; ss.
+    eapply le_lt_trans; try exact LT_VCAP. apply join_l.
+  Qed.
+
+  Lemma step_fulfillable
+        n e tid mem lc1 lc2
+        (STEP: step n e tid mem lc1 lc2)
+        (FULFILLABLE: fulfillable lc2 mem):
+    fulfillable lc1 mem.
+  Proof.
+    inv STEP; ss.
+    - eauto using read_fulfillable.
+    - eauto using fulfill_fulfillable.
+    - eapply read_fulfillable; try exact STEP_READ.
+      eapply fulfill_fulfillable; try exact STEP_FULFILL.
+      eapply control_fulfillable; eauto.
+    - eauto using dmb_fulfillable.
+    - eauto using control_fulfillable.
+  Qed.
 End RMWLocal.
 End RMWLocal.
 
