@@ -190,6 +190,8 @@ Module State.
   .
 End State.
 
+Definition ps_program: Type := IdentMap.t (list Stmt.t).
+
 Program Definition lang_ps: Language.t ProgramEvent.t :=
   Language.mk
     State.init
