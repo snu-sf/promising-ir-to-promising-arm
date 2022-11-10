@@ -932,7 +932,7 @@ Section Local.
       (VIEW_VAL: view_val = vval.(ValA.annot))
       (VIEW_PRE: view_pre = joins [
                                 view_loc; view_val; lc1.(vcap); lc1.(vwn);
-                                ifc (OrdW.ge ord OrdW.srlx) lc1.(vro);
+                                ifc (OrdW.ge ord OrdW.strong) lc1.(vro);
                                 ifc (OrdW.ge ord OrdW.release_pc) lc1.(vwo);
                                 ifc (ex && (arch == riscv))
                                     (match lc1.(exbank) with

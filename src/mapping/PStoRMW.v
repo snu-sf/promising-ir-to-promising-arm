@@ -66,7 +66,7 @@ Definition ps_to_rmw_ordw (ord: Ordering.t): OrdW.t :=
   then OrdW.release_pc
   else
     if Ordering.le Ordering.plain ord
-    then OrdW.srlx
+    then OrdW.strong
     else OrdW.pln.
 
 Definition orr (a b: bool): bool := a || b.

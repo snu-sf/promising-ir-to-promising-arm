@@ -872,7 +872,7 @@ Proof.
           - eapply sim_local_vwn_spec; eauto.
           - econs; eauto. apply Label.write_is_writing.
         }
-        { destruct (OrdW.ge ord OrdW.srlx) eqn:ORD; s; cycle 1.
+        { destruct (OrdW.ge ord OrdW.strong) eqn:ORD; s; cycle 1.
           { apply bot_spec. }
           generalize SIM_LOCAL.(VRO). intro X. inv X.
           { rewrite VIEW2. apply bot_spec. }

@@ -61,9 +61,9 @@ Module Label.
     | _ => false
     end.
 
-  Definition is_srlx (label:t): bool :=
+  Definition is_strong (label:t): bool :=
     match label with
-    | write _ ord _ _ => OrdW.ge ord OrdW.srlx
+    | write _ ord _ _ => OrdW.ge ord OrdW.strong
     | _ => false
     end.
 
@@ -913,7 +913,7 @@ Module Execution.
 
     (⦗ex.(label_is) Label.is_read⦘ ⨾
      po ⨾
-     ⦗ex.(label_is) Label.is_srlx⦘) ∪
+     ⦗ex.(label_is) Label.is_strong⦘) ∪
 
     (ifc (arch == riscv) ex.(rmw)).
 

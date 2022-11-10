@@ -90,7 +90,7 @@ End OrdR.
 Module OrdW.
   Inductive t :=
   | pln
-  | srlx
+  | strong
   | release_pc
   | release
   .
@@ -103,8 +103,8 @@ Module OrdW.
     | _, release => false
     | release_pc, _ => true
     | _, release_pc => false
-    | srlx, _ => true
-    | _, srlx => false
+    | strong, _ => true
+    | _, strong => false
     | pln, pln => true
     end.
 End OrdW.
