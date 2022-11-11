@@ -4,7 +4,7 @@ COQTHEORIES  := lib/hahn/*.v $(foreach dir, $(COQDIRS), src/$(dir)/*.v)
 
 .PHONY: all theories clean
 
-all: quick
+all: build
 
 build: Makefile.coq
 	$(MAKE) -f Makefile.coq all
