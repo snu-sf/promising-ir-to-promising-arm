@@ -51,3 +51,34 @@ Definition ps_to_arm_program (prog_ps: ps_program) (prog_arm: program): Prop :=
     option_rel
       (fun stmts_ps stmts_arm => stmts_arm = ps_to_arm_stmts reg1 reg2 stmts_ps)
       (IdentMap.find tid prog_ps) (IdMap.find tid prog_arm).
+
+Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
+  | sim_memory_final_intro
+      (MEM_SOUND: forall ts msg_arm
+                         (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
+        exists loc_ps from val_ps released na,
+          (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+          (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
+          (<<VAL: PStoRMW.sim_val val_ps msg_arm.(Msg.val)>>) /\
+          (<<TS: PSTime.lt from (ntt ts)>>))
+      (MEM_COMPLETE: forall loc_ps from to msg_ps
+                            (TO: PSTime.lt PSTime.bot to)
+                            (GET_PS: PSMemory.get loc_ps to mem_ps = Some (from, msg_ps)),
+        exists ts msg_arm,
+          (<<TO: to = ntt ts>>) /\
+          (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
+          (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
+.
+
+Theorem ps_to_arm
+        prog_ps
+        prog_arm m
+        (COMPILE: ps_to_arm_program prog_ps prog_arm)
+        (EXEC: Machine.exec prog_arm m):
+  exists c,
+    (<<STEPS: rtc Configuration.all_step
+                  (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c>>) /\
+    (<<TERMINAL: Configuration.is_terminal c>>) /\
+    (<<MEMORY: sim_memory_final c.(Configuration.global).(Global.memory) m.(Machine.mem)>>).
+Proof.
+Admitted.
