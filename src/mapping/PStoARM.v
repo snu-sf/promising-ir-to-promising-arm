@@ -37,6 +37,8 @@ Require Import PromisingArch.mapping.RMWLang.
 Require Import PromisingArch.mapping.RMWPromising.
 Require Import PromisingArch.mapping.PSLang.
 Require Import PromisingArch.mapping.PStoRMWUtils.
+Require Import PromisingArch.mapping.PStoRMWDef.
+Require Import PromisingArch.mapping.PStoRMWThread.
 Require Import PromisingArch.mapping.PStoRMW.
 Require Import PromisingArch.mapping.RMWtoLLSC.
 
@@ -59,7 +61,7 @@ Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
         exists loc_ps from val_ps released na,
           (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
           (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
-          (<<VAL: PStoRMW.sim_val val_ps msg_arm.(Msg.val)>>) /\
+          (<<VAL: PStoRMWThread.sim_val val_ps msg_arm.(Msg.val)>>) /\
           (<<TS: PSTime.lt from (ntt ts)>>))
       (MEM_COMPLETE: forall loc_ps from to msg_ps
                             (TO: PSTime.lt PSTime.bot to)

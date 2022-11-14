@@ -788,6 +788,48 @@ Section RMWExecUnit.
     induction STEPS; ss.
     etrans; eauto using state_step_promises_le.
   Qed.
+
+  Lemma state_step_rmw_wf
+        n tid eu1 eu2
+        (STEP: state_step n tid eu1 eu2)
+        (WF: RMWLocal.wf tid eu1.(local) eu1.(mem)):
+    RMWLocal.wf tid eu2.(local) eu2.(mem).
+  Proof.
+    inv STEP. inv STEP0.
+    rewrite MEM in *.
+    eapply RMWLocal.step_wf; eauto.
+  Qed.
+
+  Lemma rtc_state_step_rmw_wf
+        n tid eu1 eu2
+        (STEPS: rtc (state_step n tid) eu1 eu2)
+        (WF: RMWLocal.wf tid eu1.(local) eu1.(mem)):
+    RMWLocal.wf tid eu2.(local) eu2.(mem).
+  Proof.
+    induction STEPS;
+      eauto using state_step_rmw_wf.
+  Qed.
+
+  Lemma state_step_fulfillable
+        n tid eu1 eu2
+        (STEP: state_step n tid eu1 eu2)
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(local) eu2.(mem)):
+    RMWLocal.fulfillable eu1.(local) eu1.(mem).
+  Proof.
+    inv STEP. inv STEP0.
+    rewrite <- MEM in *.
+    eapply RMWLocal.step_fulfillable; eauto.
+  Qed.
+
+  Lemma rtc_state_step_fulfillable
+        n tid eu1 eu2
+        (STEPS: rtc (state_step n tid) eu1 eu2)
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(local) eu2.(mem)):
+    RMWLocal.fulfillable eu1.(local) eu1.(mem).
+  Proof.
+    induction STEPS;
+      eauto using state_step_fulfillable.
+  Qed.
 End RMWExecUnit.
 End RMWExecUnit.
 
