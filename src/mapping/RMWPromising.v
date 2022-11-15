@@ -128,43 +128,11 @@ Section RMWLocal.
   #[local]
   Hint Constructors step: core.
 
-  (* Variant pf_step (n:Time.t) (event:RMWEvent.t (A:=View.t (A:=A))) (tid:Id.t) (mem:Memory.t) (lc1 lc2:Local.t (A:=A)): Prop := *)
-  (* | pf_step_internal *)
-  (*     (EVENT: event = RMWEvent.internal) *)
-  (*     (LC: lc2 = lc1) *)
-  (* | pf_step_read *)
-  (*     ord vloc res ts *)
-  (*     (EVENT: event = RMWEvent.read ord vloc res) *)
-  (*     (STEP: Local.read false ord vloc res ts lc1 mem lc2) *)
-  (* | pf_step_fulfill *)
-  (*     ord vloc vval res ts view_pre *)
-  (*     (EVENT: event = RMWEvent.write ord vloc vval) *)
-  (*     (STEP: Local.fulfill false ord vloc vval res ts tid view_pre lc1 mem lc2) *)
-  (*     (PF: le ts n -> OrdW.ge ord OrdW.pln) *)
-  (* | pf_step_fadd *)
-  (*     ordr ordw vloc vold vnew ts_old ts_new res lc1' view_pre lc1'' *)
-  (*     (EVENT: event = RMWEvent.fadd ordr ordw vloc vold vnew) *)
-  (*     (STEP_READ: Local.read true ordr vloc vold ts_old lc1 mem lc1') *)
-  (*     (STEP_FULFILL: Local.fulfill true ordw vloc vnew res ts_new tid view_pre lc1' mem lc1'') *)
-  (*     (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' lc2) *)
-  (*     (PF: le ts_new n -> OrdW.ge ordw OrdW.pln) *)
-  (* | pf_step_dmb *)
-  (*     rr rw wr ww *)
-  (*     (EVENT: event = RMWEvent.dmb rr rw wr ww) *)
-  (*     (STEP: Local.dmb rr rw wr ww lc1 lc2) *)
-  (* | pf_step_control *)
-  (*     ctrl *)
-  (*     (EVENT: event = RMWEvent.control ctrl) *)
-  (*     (LC: Local.control ctrl lc1 lc2) *)
-  (* . *)
-  (* #[local] *)
-  (* Hint Constructors pf_step: core. *)
-
-  (* Lemma pf_step_step n: *)
-  (*   pf_step n <5= step None. *)
-  (* Proof. *)
-  (*   i. inv PR; eauto. *)
-  (* Qed. *)
+  Lemma pf_step_step n:
+    step n <5= step None.
+  Proof.
+    i. inv PR; eauto.
+  Qed.
 
   Lemma step_incr
         n e tid mem lc1 lc2
@@ -483,7 +451,7 @@ Section RMWExecUnit.
       (STEP: state_step0 n tid e e eu1 eu2)
   .
   #[local]
-  Hint Constructors state_step: core.
+    Hint Constructors state_step: core.
 
   Definition is_dmbsy (e: RMWEvent.t (A:=View.t (A:=A))): bool :=
     match e with
@@ -530,6 +498,50 @@ Section RMWExecUnit.
   .
   #[local]
   Hint Constructors state_step_dmbsy_over: core.
+
+  Lemma pf_state_step_state_step n:
+    state_step n <3= state_step None.
+  Proof.
+    i. inv PR. inv STEP. econs.
+    econs; eauto using RMWLocal.pf_step_step.
+  Qed.
+
+  Lemma dmbsy_state_step n sc:
+    state_step_dmbsy n sc <3= state_step n.
+  Proof.
+    i. inv PR. econs. eauto.
+  Qed.
+
+  Lemma dmbsy_exact_state_step n sc:
+    state_step_dmbsy_exact n sc <3= state_step n.
+  Proof.
+    i. inv PR. econs. eauto.
+  Qed.
+
+  Lemma dmbsy_under_state_step n sc:
+    state_step_dmbsy_under n sc <3= state_step n.
+  Proof.
+    i. inv PR. econs. eauto.
+  Qed.
+
+  Lemma dmbsy_over_state_step n sc:
+    state_step_dmbsy_over n sc <3= state_step n.
+  Proof.
+    i. inv PR. econs. eauto.
+  Qed.
+
+  Lemma dmbsy_dmbsy_exact:
+    state_step_dmbsy <5= state_step_dmbsy_exact.
+  Proof.
+    i. inv PR. econs; eauto.
+  Qed.
+
+  Lemma dmbsy_exact_dmbsy_over:
+    state_step_dmbsy_exact <5= state_step_dmbsy_over.
+  Proof.
+    i. inv PR. econs; eauto.
+    i. apply DMBSY in H1. subst. refl.
+  Qed.
 
   Lemma state_step_dmbsy_over_S
         n sc tid eu1 eu2

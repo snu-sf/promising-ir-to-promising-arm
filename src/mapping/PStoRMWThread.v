@@ -40,7 +40,6 @@ Require Import PromisingArch.mapping.PStoRMWUtils.
 Require Import PromisingArch.mapping.PStoRMWDef.
 
 Set Implicit Arguments.
-Set Nested Proofs Allowed.
 
 
 Module PStoRMWThread.

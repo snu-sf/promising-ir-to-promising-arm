@@ -61,6 +61,83 @@ Module PStoRMW.
         (PROMISES3: eu3.(RMWExecUnit.local).(Local.promises) = bot)
   .
 
+  Lemma sim_thread_exec_sc
+        tid n th1_ps eu
+        (SIM: sim_thread_exec tid n false th1_ps eu)
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
+    exists th2_ps,
+      (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+      ((<<SIM_AFTER: sim_thread_exec tid n true th2_ps eu>>) \/
+       exists e_ps th3_ps,
+         (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+         (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
+  Proof.
+    inv SIM.
+    exploit (dmbsy_le_cases (A:=unit)); try exact STEPS3. i. des.
+    { exploit (dmbsy_le_cases (A:=unit)); try exact STEPS2. i. des.
+      { esplits; try refl. left. econs; eauto. }
+      exploit rtc_n1; try exact STEPS_DMBSY1.
+      { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. }
+      intro STEPS_EXACT.
+      exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto.
+      { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. }
+      { eapply dmbsy_vro_after. eauto. }
+      { rewrite STEPS_DMBSY in STEPS_DMBSY2.
+        eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
+          try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step;
+          try exact STEPS_DMBSY2.
+        ii. rewrite PROMISES3, Promises.lookup_bot in *. ss.
+      }
+      i. des; [|esplits; eauto].
+      esplits; eauto. left. econs.
+      - etrans; [exact STEPS1|].
+        eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
+        eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
+        eapply rtc_n1; try exact STEPS_DMBSY1.
+        eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto.
+      - ss.
+      - refl.
+      - eauto.
+      - ss.
+      - eauto.
+      - ss.
+    }
+
+    { exploit rtc_implies; try exact STEPS_DMBSY1;
+        try eapply (RMWExecUnit.dmbsy_exact_dmbsy_over (A:=unit)). i.
+      rewrite x0 in STEPS2.
+      exploit (steps_dmbsy (A:=unit)); try exact STEPS2; eauto. i.
+      exploit rtc_n1; try exact x1.
+      { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. }
+      intro STEPS_EXACT.
+      exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto.
+      { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. }
+      { eapply dmbsy_vro_after. eauto. }
+      { eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
+          try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step;
+          try exact STEPS_DMBSY2.
+        ii. rewrite PROMISES3, Promises.lookup_bot in *. ss.
+      }
+      i. des; [|esplits; eauto].
+      esplits; eauto. left. econs.
+      - etrans; [exact STEPS1|].
+        eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
+        eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
+        exact STEPS_EXACT.
+      - ss.
+      - refl.
+      - eauto.
+      - hexploit (RMWExecUnit.rtc_state_step_promises_le (A:=unit));
+          try eapply rtc_implies; try eapply RMWExecUnit.dmbsy_over_state_step; try exact STEPS3.
+        i. auto.
+      - eauto.
+      - ss.
+    }
+  Qed.
+
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
     forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)

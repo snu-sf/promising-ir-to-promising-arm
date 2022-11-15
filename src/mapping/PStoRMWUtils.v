@@ -131,7 +131,7 @@ Qed.
 
 (* SC fence with sc view le n *)
 
-Section DMBSY.
+Section RMWStep.
   Context `{A: Type, _: orderC A eq}.
 
   Lemma dmbsy_le_cases
@@ -162,7 +162,62 @@ Section DMBSY.
       rewrite <- H2. i.
       rewrite H3 in x1. nia.
   Qed.
-End DMBSY.
+
+  Lemma step_sc
+        n sc tid eu1 eu2
+        (STEP: RMWExecUnit.state_step_dmbsy_over n sc tid eu1 eu2)
+        (SC: le (join eu2.(RMWExecUnit.local).(Local.vro) eu2.(RMWExecUnit.local).(Local.vwo)).(View.ts) sc):
+    RMWExecUnit.state_step_dmbsy_exact n sc tid eu1 eu2.
+  Proof.
+    exploit RMWExecUnit.state_step_incr;
+      try eapply RMWExecUnit.dmbsy_over_state_step; eauto. i.
+    inv STEP. econs; eauto. i.
+    apply DMBSY in H1.
+    eapply le_antisym; ss.
+    etrans; try apply SC.
+    eapply join_le; try apply Time.order; apply x0.
+  Qed.
+
+  Lemma steps_dmbsy
+        n sc tid eu1 eu2 eu3
+        (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over n sc tid) eu1 eu2)
+        (STEP: RMWExecUnit.state_step_dmbsy n sc tid eu2 eu3):
+    rtc (RMWExecUnit.state_step_dmbsy_exact n sc tid) eu1 eu2.
+  Proof.
+    assert (SC: le (join eu2.(RMWExecUnit.local).(Local.vro) eu2.(RMWExecUnit.local).(Local.vwo)).(View.ts) sc).
+    { inv STEP. refl. }
+    clear eu3 STEP. revert SC.
+    induction STEPS; try refl. i.
+    exploit IHSTEPS; ss. i.
+    econs; try exact x1.
+    eapply step_sc; ss.
+    etrans; try exact SC.
+    exploit RMWExecUnit.rtc_state_step_incr;
+      try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step; try exact STEPS. i.
+    eapply join_le; try apply Time.order; apply x2.
+  Qed.
+
+  Lemma dmbsy_vro_after
+        n sc tid eu1 eu2
+        (STEP: RMWExecUnit.state_step_dmbsy n sc tid eu1 eu2):
+    le eu2.(RMWExecUnit.local).(Local.vro).(View.ts) sc.
+  Proof.
+    inv STEP. inv STEP0. inv LOCAL; ss.
+    destruct eu2. inv STEP. ss. subst. ss.
+    apply join_l.
+  Qed.
+
+  Lemma dmbsy_vwo_after
+        n sc tid eu1 eu2
+        (STEP: RMWExecUnit.state_step_dmbsy n sc tid eu1 eu2):
+    le eu2.(RMWExecUnit.local).(Local.vwo).(View.ts) sc.
+  Proof.
+    inv STEP. inv STEP0. inv LOCAL; ss.
+    destruct eu2. inv STEP. ss. subst. ss.
+    apply join_r.
+  Qed.
+End RMWStep.
+
 
 Lemma reorder_read_cancel
       lc1 gl1 loc1 to1 val released ord lc2
