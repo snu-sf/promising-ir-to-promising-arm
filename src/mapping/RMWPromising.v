@@ -219,6 +219,15 @@ Section RMWLocal.
             Promises.lookup ts lc.(Local.promises))
   .
 
+  Lemma init_wf tid:
+    wf tid Local.init Memory.empty.
+  Proof.
+    econs; ss; i; try refl; try apply join_l.
+    - ii. rewrite Promises.lookup_bot in *. ss.
+    - unfold Memory.get_msg in *. destruct ts; ss.
+      apply nth_error_some in MSG. ss. nia.
+  Qed.
+
   Lemma read_wf
         tid
         ex ord vloc res ts lc1 mem lc2
@@ -325,6 +334,26 @@ Section RMWLocal.
       eapply read_wf; eauto.
     - eauto using dmb_wf.
     - eauto using control_wf.
+  Qed.
+
+  Lemma interference_wf
+        tid lc mem mem'
+        (INTERFERENCE: Forall (fun msg => msg.(Msg.tid) <> tid) mem')
+        (WF: wf tid lc mem):
+    wf tid lc (mem ++ mem').
+  Proof.
+    inv WF. econs; ss.
+    - ii. exploit PRM; eauto. i. des.
+      esplits; eauto.
+      unfold Memory.get_msg in *. destruct ts; ss.
+      eapply nth_error_app_mon; eauto.
+    - i. unfold Memory.get_msg in MSG. destruct ts; ss.
+      apply nth_error_app_inv in MSG. des; eauto.
+      apply nth_error_In in MSG0.
+      rewrite Forall_forall in INTERFERENCE.
+      exploit INTERFERENCE; eauto.
+      rewrite TID. i. r in x0.
+      unfold proj_sumbool in x0. des_ifs. congr.
   Qed.
 
   Definition fulfillable (lc: Local.t (A:=A)) (mem: Memory.t): Prop :=
@@ -822,6 +851,34 @@ Section RMWExecUnit.
       eauto using state_step_rmw_wf.
   Qed.
 
+  Lemma promise_step_rmw_wf
+        tid eu1 eu2
+        (STEP: promise_step tid eu1 eu2)
+        (WF: RMWLocal.wf tid eu1.(local) eu1.(mem)):
+    RMWLocal.wf tid eu2.(local) eu2.(mem).
+  Proof.
+    destruct eu1, eu2.
+    inv STEP. inv LOCAL. inv MEM2. ss. subst.
+    inv WF. econs; ss.
+    - ii. revert LOOKUP.
+      rewrite Promises.set_o. condtac; ss; i.
+      + r in e. subst.
+        unfold Memory.get_msg. ss.
+        rewrite nth_error_app2; try refl.
+        rewrite Nat.sub_diag. ss. esplits; eauto.
+      + exploit PRM; eauto. i. des. esplits; eauto.
+        unfold Memory.get_msg in *. destruct ts; ss.
+        eapply nth_error_app_mon; eauto.
+    - i. unfold Memory.get_msg in MSG. destruct ts; ss.
+      apply nth_error_app_inv in MSG. des.
+      + rewrite Promises.set_o.
+        condtac; ss; try nia. eauto.
+      + rewrite Promises.set_o.
+        condtac; ss; eauto.
+        apply nth_error_some in MSG0. ss.
+        cut (ts = length mem0); try nia. i. subst. congr.
+  Qed.
+
   Lemma state_step_fulfillable
         n tid eu1 eu2
         (STEP: state_step n tid eu1 eu2)
@@ -1024,6 +1081,87 @@ Module RMWMachine.
   Proof.
     revert WF. induction STEP; ss. i. apply IHSTEP.
     eapply step_step_wf; eauto.
+  Qed.
+
+  Variant rmw_wf (m:t): Prop :=
+  | rmw_wf_intro
+      (WF: forall tid st lc
+             (FIND: IdMap.find tid m.(tpool) = Some (st, lc)),
+          RMWLocal.wf tid lc m.(mem))
+  .
+  #[global]
+  Hint Constructors rmw_wf: core.
+
+  Lemma init_rmw_wf p:
+    rmw_wf (init p).
+  Proof.
+    econs. i. ss.
+    rewrite IdMap.map_spec in FIND. destruct (IdMap.find tid p); inv FIND.
+    apply RMWLocal.init_wf.
+  Qed.
+
+  Lemma step_state_step_rmw_wf
+        n m1 m2
+        (STEP: step (RMWExecUnit.state_step n) m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    destruct m1 as [tpool1 mem1].
+    destruct m2 as [tpool2 mem2].
+    inv STEP. inv WF. econs. ss. subst.
+    i. revert FIND0. rewrite IdMap.add_spec. condtac.
+    - r in e. i. inv FIND0.
+      exploit (RMWExecUnit.state_step_rmw_wf (A:=unit)); eauto.
+    - inv STEP0. inv STEP. ss. subst. eauto.
+  Qed.
+
+  Lemma step_promise_step_rmw_wf
+        m1 m2
+        (STEP: step RMWExecUnit.promise_step m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    destruct m1 as [tpool1 mem1].
+    destruct m2 as [tpool2 mem2].
+    inv STEP. inv WF. econs. ss. subst.
+    i. revert FIND0. rewrite IdMap.add_spec. condtac.
+    - r in e. i. inv FIND0.
+      exploit (RMWExecUnit.promise_step_rmw_wf (A:=unit)); eauto.
+    - i. apply WF0 in FIND0.
+      inv STEP0. inv LOCAL. inv MEM2. ss. subst.
+      eapply RMWLocal.interference_wf; eauto.
+      econs; ss. unfold proj_sumbool. condtac; ss. congr.
+  Qed.
+
+  Lemma rtc_step_promise_step_rmw_wf
+        m1 m2
+        (STEP: rtc (step RMWExecUnit.promise_step) m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    revert WF. induction STEP; ss. i. apply IHSTEP.
+    eapply step_promise_step_rmw_wf; eauto.
+  Qed.
+
+  Lemma step_step_rmw_wf
+        m1 m2
+        (STEP: step RMWExecUnit.step m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    inv STEP. inv STEP0.
+    - eapply step_state_step_rmw_wf; eauto.
+    - eapply step_promise_step_rmw_wf; eauto.
+  Qed.
+
+  Lemma rtc_step_step_rmw_wf
+        m1 m2
+        (STEP: rtc (step RMWExecUnit.step) m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    revert WF. induction STEP; ss. i. apply IHSTEP.
+    eapply step_step_rmw_wf; eauto.
   Qed.
 
   Lemma step_mon
