@@ -1594,13 +1594,15 @@ Module PStoRMWThread.
         (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      ((<<SIM2: sim_thread tid n th2_ps eu2>>) \/
+      ((<<SIM2: sim_thread tid n th2_ps eu2>>) /\
+       (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
        exists e_ps th3_ps,
          (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
          (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
   Proof.
     revert th1_ps SIM1 SC1 LC_WF1_PS GL_WF1_PS.
-    induction STEPS_ARM; eauto. i.
+    induction STEPS_ARM; i.
+    { esplits; eauto. }
     hexploit (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); try exact FULFILLABLE;
       try eapply rtc_mon; try exact STEPS_ARM; i.
     { inv H0. econs. eauto. }
