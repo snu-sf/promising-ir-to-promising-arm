@@ -879,6 +879,16 @@ Section RMWExecUnit.
         cut (ts = length mem0); try nia. i. subst. congr.
   Qed.
 
+  Lemma rtc_promise_step_rmw_wf
+        tid eu1 eu2
+        (STEPS: rtc (promise_step tid) eu1 eu2)
+        (WF: RMWLocal.wf tid eu1.(local) eu1.(mem)):
+    RMWLocal.wf tid eu2.(local) eu2.(mem).
+  Proof.
+    induction STEPS;
+      eauto using promise_step_rmw_wf.
+  Qed.
+
   Lemma state_step_fulfillable
         n tid eu1 eu2
         (STEP: state_step n tid eu1 eu2)

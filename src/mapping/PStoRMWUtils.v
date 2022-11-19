@@ -48,6 +48,7 @@ Module PSCell := PromisingIR.Cell.Cell.
 Module PSMemory := PromisingIR.Memory.Memory.
 Module PSGlobal := PromisingIR.Global.Global.
 Module PSThread := PromisingIR.Thread.Thread.
+Module PSThreads := PromisingIR.Configuration.Threads.
 Module PSConfiguration := PromisingIR.Configuration.Configuration.
 
 

@@ -80,9 +80,9 @@ Module PStoRMW.
         (SIM_THREADS:
           forall tid,
             opt_rel
-              (sim_thread_sl tid n after_sc c.(PSConfiguration.global) m.(RMWMachine.mem))
+              (sim_thread_sl tid n after_sc c.(PSConfiguration.global) m1.(RMWMachine.mem))
               (IdentMap.find tid c.(PSConfiguration.threads))
-              (IdMap.find tid m.(RMWMachine.tpool)))
+              (IdMap.find tid m1.(RMWMachine.tpool)))
         (SIM_SC: forall loc,
             PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
   .
@@ -180,31 +180,57 @@ Module PStoRMW.
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
   Proof.
     inv SIM1.
+    exploit RMWMachine.rtc_step_promise_step_rmw_wf; eauto.
+    clear WF_ARM. intro WF_ARM.
     assert (exists tids,
                (<<IN: forall tid (IN: List.In tid tids),
                    opt_rel
-                     (sim_thread_sl tid n false c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                     (sim_thread_sl tid n false c1.(PSConfiguration.global) m1.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
-                     (IdMap.find tid m.(RMWMachine.tpool))>>) /\
+                     (IdMap.find tid m1.(RMWMachine.tpool))>>) /\
                (<<OUT: forall tid (OUT: ~ List.In tid tids),
                    opt_rel
-                     (sim_thread_sl tid n true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                     (sim_thread_sl tid n true c1.(PSConfiguration.global) m1.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
-                     (IdMap.find tid m.(RMWMachine.tpool))>>)).
-    { admit.
+                     (IdMap.find tid m1.(RMWMachine.tpool))>>)).
+    { exists (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1))).
+      splits; i.
+      - specialize (SIM_THREADS tid).
+        inv SIM_THREADS; ss. econs. ss.
+      - specialize (SIM_THREADS tid).
+        inv SIM_THREADS; ss. exfalso.
+        exploit PSThreads.tids_o. rewrite <- H0. s. i.
+        rewrite IdentSet.mem_spec in x0.
+        rewrite <- IdentSet.elements_spec1 in x0.
+        apply OUT. clear - x0.
+        induction (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1)));
+          inv x0; ss; auto.
     }
     des. clear SIM_THREADS.
     revert c1 WF1_PS SIM_SC IN OUT.
     induction tids; i.
     { esplits; try refl. left. econs; eauto. }
-    destruct c1 as [ths1 gl1].
+    destruct c1 as [ths1 gl1], m1 as [tpool1 mem1_arm].
     exploit (IN a); ss; auto. intro SIM_THREAD.
-    destruct (IdentMap.find a ths1) as [[[lang st1] lc1]|] eqn:FIND_PS; cycle 1.
+    destruct (IdentMap.find a ths1) as [[[lang st1_ps] lc1_ps]|] eqn:FIND_PS; cycle 1.
     { inv SIM_THREAD.
       eapply IHtids; try exact WF1_PS; eauto. s. i.
       destruct (Ident.eq_dec tid a).
       { subst. rewrite FIND_PS, <- H. ss. }
       eapply (OUT tid). ii. des; eauto.
     }
+
+    inv SIM_THREAD.
+    symmetry in H. rename H into FIND_ARM.
+    destruct b as [st1_arm lc1_arm].
+    inv REL. apply inj_pair2 in H1. subst.
+    dup WF1_PS. inv WF1_PS0. inv WF. ss.
+    exploit THREADS; eauto. intro LC_WF_PS.
+    rename GL_WF into GL_WF_PS.
+    clear DISJOINT THREADS PROMISES.
+    dup WF_ARM. inv WF_ARM0.
+    exploit WF; eauto.
+    clear WF. s. intro WF1_ARM.
+    exploit sim_thread_exec_sc; try exact SIM_THREAD; eauto. i. des.
   Admitted.
 End PStoRMW.
