@@ -45,4 +45,15 @@ Set Implicit Arguments.
 
 Module PStoRMWConsistent.
   Import PStoRMWThread.
+
+  Lemma sim_thread_exec_consistent
+        tid n after_sc th1_ps eu
+        (SIM1: sim_thread_exec tid n after_sc th1_ps eu)
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
+    PSThread.consistent th1_ps.
+  Proof.
+  Admitted.
 End PStoRMWConsistent.

@@ -220,6 +220,8 @@ Section RMWStep.
 End RMWStep.
 
 
+(* TODO: move to PS *)
+
 Lemma reorder_read_cancel
       lc1 gl1 loc1 to1 val released ord lc2
       loc2 from2 to2 lc3 gl3
@@ -233,4 +235,22 @@ Proof.
   inv STEP1. inv STEP2. inv CANCEL. ss.
   exploit PSMemory.remove_get1; try exact GET; eauto. i. des; ss.
   esplits; econs; eauto.
+Qed.
+
+Lemma rtc_thread_tau_step_rtc_tau_step
+      c1 tid lang st1 lc1 th2
+      (FIND: IdentMap.find tid c1.(Configuration.threads) = Some (existT _ lang st1, lc1))
+      (STEPS: rtc (@Thread.tau_step _) (Thread.mk _ st1 lc1 c1.(Configuration.global)) th2)
+      (CONSISTENT: Thread.consistent th2):
+  (<<STEPS: rtc Configuration.tau_step c1
+                (Configuration.mk
+                   (IdentMap.add tid (existT _ _ (Thread.state th2), (Thread.local th2)) (Configuration.threads c1))
+                   (Thread.global th2))>>).
+Proof.
+  destruct c1, th2. ss.
+  exploit rtc_tail; eauto. i. des.
+  - inv x1. econs 2; try refl.
+    econs. rewrite <- EVENT.
+    econs; eauto.
+  - inv x0. rewrite IdentMap.gsident; ss. splits. refl.
 Qed.

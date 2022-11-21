@@ -39,6 +39,7 @@ Require Import PromisingArch.mapping.PSLang.
 Require Import PromisingArch.mapping.PStoRMWUtils.
 Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWThread.
+Require Import PromisingArch.mapping.PStoRMWConsistent.
 
 Set Implicit Arguments.
 Set Nested Proofs Allowed.
@@ -46,20 +47,7 @@ Set Nested Proofs Allowed.
 
 Module PStoRMW.
   Import PStoRMWThread.
-
-  Variant sim_thread_exec (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
-    | sim_thread_exec_intro
-        sc eu1 eu2 eu3
-        (STEPS1: rtc (RMWExecUnit.state_step None tid) eu eu1)
-        (SIM_THREAD: sim_thread tid n th_ps eu1)
-        (SC: sc = if after_sc then S n else n)
-        (STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
-        (PROMISES2: forall ts (PROMISED: Promises.lookup ts eu2.(RMWExecUnit.local).(Local.promises)),
-            lt n ts)
-        (STEPS3: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu2 eu3)
-        (PROMISES3: eu3.(RMWExecUnit.local).(Local.promises) = bot)
-  .
+  Import PStoRMWConsistent.
 
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
@@ -104,69 +92,106 @@ Module PStoRMW.
          (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
   Proof.
     inv SIM1.
-    exploit (dmbsy_le_cases (A:=unit)); try exact STEPS3. i. des.
-    { exploit (dmbsy_le_cases (A:=unit)); try exact STEPS2. i. des.
-      { esplits; try refl. left. split; ss. econs; eauto. }
-      exploit rtc_n1; try exact STEPS_DMBSY1.
-      { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. }
-      intro STEPS_EXACT.
-      exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto.
-      { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. }
-      { eapply dmbsy_vro_after. eauto. }
-      { rewrite STEPS_DMBSY in STEPS_DMBSY2.
-        eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
-          try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step;
-          try exact STEPS_DMBSY2.
-        ii. rewrite PROMISES3, Promises.lookup_bot in *. ss.
-      }
-      i. des; [|esplits; eauto].
-      esplits; eauto. left. split; ss.
-      econs.
-      - etrans; [exact STEPS1|].
-        eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
-        eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
-        eapply rtc_n1; try exact STEPS_DMBSY1.
-        eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto.
-      - ss.
-      - refl.
-      - eauto.
-      - ss.
-      - eauto.
-      - ss.
+    exploit (dmbsy_le_cases (A:=unit)); try exact STEPS2. i. des.
+    { esplits; try refl. left. split; ss. econs; eauto. }
+    exploit rtc_n1; try exact STEPS_DMBSY1.
+    { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. }
+    intro STEPS_EXACT.
+    exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto.
+    { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. }
+    { eapply dmbsy_vro_after. eauto. }
+    { eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
+        try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step;
+        try exact STEPS_DMBSY2.
+      ii. rewrite PROMISES, Promises.lookup_bot in *. ss.
     }
+    i. des; [|esplits; eauto].
+    esplits; eauto. left. split; ss.
+    econs.
+    - etrans; [exact STEPS1|].
+      eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
+      eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
+      eapply rtc_n1; try exact STEPS_DMBSY1.
+      eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto.
+    - ss.
+    - refl.
+    - eauto.
+    - ss.
 
-    { exploit rtc_implies; try exact STEPS_DMBSY1;
-        try eapply (RMWExecUnit.dmbsy_exact_dmbsy_over (A:=unit)). i.
-      rewrite x0 in STEPS2.
-      exploit (steps_dmbsy (A:=unit)); try exact STEPS2; eauto. i.
-      exploit rtc_n1; try exact x1.
-      { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. }
-      intro STEPS_EXACT.
-      exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto.
-      { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. }
-      { eapply dmbsy_vro_after. eauto. }
-      { eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
-          try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step;
-          try exact STEPS_DMBSY2.
-        ii. rewrite PROMISES3, Promises.lookup_bot in *. ss.
-      }
-      i. des; [|esplits; eauto].
-      esplits; eauto. left. split; ss.
-      econs.
-      - etrans; [exact STEPS1|].
-        eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
-        eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
-        exact STEPS_EXACT.
-      - ss.
-      - refl.
-      - eauto.
-      - hexploit (RMWExecUnit.rtc_state_step_promises_le (A:=unit));
-          try eapply rtc_implies; try eapply RMWExecUnit.dmbsy_over_state_step; try exact STEPS3.
-        i. auto.
-      - eauto.
-      - ss.
-    }
+    (* inv SIM1. *)
+    (* exploit (dmbsy_le_cases (A:=unit)); try exact STEPS3. i. des. *)
+    (* { exploit (dmbsy_le_cases (A:=unit)); try exact STEPS2. i. des. *)
+    (*   { esplits; try refl. left. split; ss. econs; eauto. } *)
+    (*   exploit rtc_n1; try exact STEPS_DMBSY1. *)
+    (*   { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. } *)
+    (*   intro STEPS_EXACT. *)
+    (*   exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto. *)
+    (*   { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. } *)
+    (*   { eapply dmbsy_vro_after. eauto. } *)
+    (*   { rewrite STEPS_DMBSY in STEPS_DMBSY2. *)
+    (*     eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); *)
+    (*       try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step; *)
+    (*       try exact STEPS_DMBSY2. *)
+    (*     ii. rewrite PROMISES3, Promises.lookup_bot in *. ss. *)
+    (*   } *)
+    (*   i. des; [|esplits; eauto]. *)
+    (*   esplits; eauto. left. split; ss. *)
+    (*   econs. *)
+    (*   - etrans; [exact STEPS1|]. *)
+    (*     eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step. *)
+    (*     eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step. *)
+    (*     eapply rtc_n1; try exact STEPS_DMBSY1. *)
+    (*     eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. *)
+    (*   - ss. *)
+    (*   - refl. *)
+    (*   - eauto. *)
+    (*   - ss. *)
+    (*   - eauto. *)
+    (*   - ss. *)
+    (* } *)
+
+    (* { exploit rtc_implies; try exact STEPS_DMBSY1; *)
+    (*     try eapply (RMWExecUnit.dmbsy_exact_dmbsy_over (A:=unit)). i. *)
+    (*   rewrite x0 in STEPS2. *)
+    (*   exploit (steps_dmbsy (A:=unit)); try exact STEPS2; eauto. i. *)
+    (*   exploit rtc_n1; try exact x1. *)
+    (*   { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. } *)
+    (*   intro STEPS_EXACT. *)
+    (*   exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto. *)
+    (*   { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. } *)
+    (*   { eapply dmbsy_vro_after. eauto. } *)
+    (*   { eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); *)
+    (*       try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step; *)
+    (*       try exact STEPS_DMBSY2. *)
+    (*     ii. rewrite PROMISES3, Promises.lookup_bot in *. ss. *)
+    (*   } *)
+    (*   i. des; [|esplits; eauto]. *)
+    (*   esplits; eauto. left. split; ss. *)
+    (*   econs. *)
+    (*   - etrans; [exact STEPS1|]. *)
+    (*     eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step. *)
+    (*     eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step. *)
+    (*     exact STEPS_EXACT. *)
+    (*   - ss. *)
+    (*   - refl. *)
+    (*   - eauto. *)
+    (*   - hexploit (RMWExecUnit.rtc_state_step_promises_le (A:=unit)); *)
+    (*       try eapply rtc_implies; try eapply RMWExecUnit.dmbsy_over_state_step; try exact STEPS3. *)
+    (*     i. auto. *)
+    (*   - eauto. *)
+    (*   - ss. *)
+    (* } *)
   Qed.
+
+  Lemma sim_memory_future
+        tid n lc_ps gl lc_arm mem_arm
+        tid' lc_ps' gl' lc_arm'
+        (SIM: sim_memory tid n lc_ps (Global.promises gl) (Global.memory gl) lc_arm mem_arm)
+        (WF': PSLocal.wf lc_ps gl')
+        (SIM': sim_memory tid' n lc_ps' (Global.promises gl') (Global.memory gl') lc_arm' mem_arm):
+    sim_memory tid n lc_ps (Global.promises gl') (Global.memory gl') lc_arm mem_arm.
+  Proof.
+  Admitted.
 
   Lemma sim_sc
         n c1 m
@@ -192,7 +217,8 @@ Module PStoRMW.
                    opt_rel
                      (sim_thread_sl tid n true c1.(PSConfiguration.global) m1.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
-                     (IdMap.find tid m1.(RMWMachine.tpool))>>)).
+                     (IdMap.find tid m1.(RMWMachine.tpool))>>) /\
+               (<<NODUP: List.NoDup tids>>)).
     { exists (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1))).
       splits; i.
       - specialize (SIM_THREADS tid).
@@ -205,19 +231,23 @@ Module PStoRMW.
         apply OUT. clear - x0.
         induction (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1)));
           inv x0; ss; auto.
+      - specialize (IdentSet.elements_spec2w (PSThreads.tids (PSConfiguration.threads c1))). i.
+        clear - H. induction H; econs; eauto.
     }
     des. clear SIM_THREADS.
-    revert c1 WF1_PS SIM_SC IN OUT.
+    revert c1 WF1_PS SIM_SC IN OUT NODUP.
     induction tids; i.
     { esplits; try refl. left. econs; eauto. }
     destruct c1 as [ths1 gl1], m1 as [tpool1 mem1_arm].
     exploit (IN a); ss; auto. intro SIM_THREAD.
     destruct (IdentMap.find a ths1) as [[[lang st1_ps] lc1_ps]|] eqn:FIND_PS; cycle 1.
     { inv SIM_THREAD.
-      eapply IHtids; try exact WF1_PS; eauto. s. i.
-      destruct (Ident.eq_dec tid a).
-      { subst. rewrite FIND_PS, <- H. ss. }
-      eapply (OUT tid). ii. des; eauto.
+      eapply IHtids; try exact WF1_PS; eauto.
+      - s. i.
+        destruct (Ident.eq_dec tid a).
+        { subst. rewrite FIND_PS, <- H. ss. }
+        eapply (OUT tid). ii. des; eauto.
+      - inv NODUP. ss.
     }
 
     inv SIM_THREAD.
@@ -231,6 +261,36 @@ Module PStoRMW.
     dup WF_ARM. inv WF_ARM0.
     exploit WF; eauto.
     clear WF. s. intro WF1_ARM.
-    exploit sim_thread_exec_sc; try exact SIM_THREAD; eauto. i. des.
+    exploit sim_thread_exec_sc; try exact SIM_THREAD; eauto. i. des; cycle 1.
+    { (* UB *)
+      destruct th3_ps.
+      esplits; try refl.
+      right. esplits. rewrite <- FAILURE.
+      econs; try apply FIND_PS; eauto. i. congr.
+    }
+
+    destruct th2_ps as [st2_ps lc2_ps gl2]. ss.
+    exploit PSThread.rtc_tau_step_future; try exact STEPS_PS; eauto. s. i. des.
+    hexploit sim_thread_exec_consistent; try exact SIM2; ss. intro CONSISTENT.
+    exploit (@rtc_thread_tau_step_rtc_tau_step (Configuration.mk ths1 gl1)); eauto. s. i. des.
+    exploit PSConfiguration.rtc_tau_step_future; try exact x0; ss. i. des.
+    exploit IHtids; try exact WF2; ss.
+    { i. rewrite IdentMap.gsspec. condtac; subst.
+      { inv NODUP. ss. }
+      exploit IN; eauto. i. inv x1.
+      { destruct (IdentMap.find tid ths1) eqn:FIND; ss. }
+      destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
+      destruct p as [[lang' st_ps] lc_ps], b as [st_arm lc_arm]. inv REL.
+      apply inj_pair2 in H2. subst. econs. econs.
+      inv SIM_THREAD0. econs; eauto.
+      inv SIM_THREAD1. econs; ss.
+      admit.
+    }
+    { admit.
+    }
+    { inv NODUP. ss. }
+    i. des.
+    - esplits; [|left; eauto]. etrans; eauto.
+    - esplits; [|right; eauto]. etrans; eauto.
   Admitted.
 End PStoRMW.
