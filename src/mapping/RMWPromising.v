@@ -909,6 +909,15 @@ Section RMWExecUnit.
     induction STEPS;
       eauto using state_step_fulfillable.
   Qed.
+
+  Lemma rtc_state_step_memory
+        n tid eu1 eu2
+        (STEPS: rtc (state_step n tid) eu1 eu2):
+    eu2.(mem) = eu1.(mem).
+  Proof.
+    induction STEPS; ss.
+    inv H1. inv STEP. congr.
+  Qed.
 End RMWExecUnit.
 End RMWExecUnit.
 
