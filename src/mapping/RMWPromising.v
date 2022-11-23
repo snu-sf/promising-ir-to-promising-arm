@@ -1483,4 +1483,51 @@ Module RMWMachine.
     repeat condtac; try congr.
     inversion e. subst. rewrite FIND. destruct (IdMap.find tid p); ss. i. inv H. ss.
   Qed.
+
+  Definition promised_memory (m: t): Prop :=
+    forall ts msg (GET: Memory.get_msg ts m.(mem) = Some msg),
+    exists st lc,
+      (<<FIND: IdMap.find msg.(Msg.tid) m.(tpool) = Some (st, lc)>>) /\
+      (<<PROMISED: Promises.lookup ts lc.(Local.promises) = true>>).
+
+  Lemma init_promised_memory p: promised_memory (init p).
+  Proof.
+    ii. ss.
+    unfold Memory.get_msg in *. des_ifs.
+    exploit nth_error_None. i. des.
+    rewrite x1 in GET; ss. nia.
+  Qed.
+
+  Lemma promise_step_promised_memory
+        m1 m2
+        (PROMISED: promised_memory m1)
+        (STEP: step RMWExecUnit.promise_step m1 m2):
+    promised_memory m2.
+  Proof.
+    destruct m1 as [tpool1 mem1], m2 as [tpool2 mem2].
+    inv STEP. inv STEP0. inv LOCAL. inv MEM2. ss. subst. ii. ss.
+    unfold Memory.get_msg in *. destruct ts; ss.
+    apply nth_error_app_inv in GET. des.
+    - exploit (PROMISED (S ts)); eauto. s. i. des.
+      erewrite IdMap.add_spec. condtac; eauto.
+      r in e. subst.
+      rewrite FIND in *. inv FIND0.
+      esplits; eauto. s.
+      rewrite Promises.set_o. condtac; ss.
+    - exploit nth_error_some; eauto. s. i.
+      assert (ts = length mem1) by nia. subst.
+      rewrite Nat.sub_diag in *. ss. inv GET0. ss.
+      rewrite IdMap.gss. esplits; eauto. s.
+      rewrite Promises.set_o. condtac; ss. congr.
+  Qed.
+
+  Lemma rtc_promise_step_promised_memory
+        m1 m2
+        (PROMISED: promised_memory m1)
+        (STEP: rtc (step RMWExecUnit.promise_step) m1 m2):
+    promised_memory m2.
+  Proof.
+    induction STEP; ss.
+    eauto using promise_step_promised_memory.
+  Qed.
 End RMWMachine.

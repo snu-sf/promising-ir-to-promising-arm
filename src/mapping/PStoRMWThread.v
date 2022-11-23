@@ -617,36 +617,6 @@ Module PStoRMWThread.
     apply TVIEW.
   Qed.
 
-  Lemma sim_memory_S
-        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
-        loc from msg
-        (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
-        (RSV_LE: Memory.le (PSLocal.reserves lc_ps) mem_ps)
-        (GET: PSMemory.get loc (ntt (S n)) mem_ps = Some (from, msg))
-        (MSG: msg <> Message.reserve):
-    sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm.
-  Proof.
-    inv MEM. move GET at bottom.
-    exploit MEM_COMPLETE; eauto.
-    { ss. eapply TimeFacts.le_lt_lt; try apply PSTime.bot_spec.
-      apply PSTime.incr_spec.
-    }
-    i. des.
-    apply ntt_inj in TO. subst.
-    econs; i; eauto.
-    - exploit PRM_SOUND; eauto. i. des. esplits; eauto. i.
-      inv H; eauto.
-      rewrite GET_ARM0 in *. inv GET_ARM.
-      rewrite LOC0 in *. inv LOC.
-      exploit RSV_LE; try eassumption. i. congr.
-    - exploit PRM_COMPLETE; eauto. i. des.
-      esplits; eauto. etrans; eauto. apply le_S. refl.
-    - exploit MEM_SOUND; eauto. i. des.
-      esplits; eauto. unguardH x0. des; subst.
-      + left. split; ss. i. inv H; eauto. ss. congr.
-      + right. esplits; eauto.
-  Qed.
-
   Lemma sim_fulfill
         tid n
         lc1_ps gl1_ps
