@@ -159,10 +159,10 @@ Module PStoRMWThread.
                  (<<LATEST: Memory.latest msg_arm.(Msg.loc) fts ts mem_arm>>))) /\
             (__guard__ (
                (<<MSG: msg_ps = Message.reserve>>) /\
+               (<<PROMISED_ARM: Promises.lookup ts lc_arm.(Local.promises) <-> msg_arm.(Msg.tid) = tid>>) /\
                (<<PROMISED: le ts n ->
                             (<<GPROMISED: gprm_ps loc_ps = true>>) /\
-                            (<<PROMISED_PS: lc_ps.(PSLocal.promises) loc_ps <-> msg_arm.(Msg.tid) = tid>>) /\
-                            (<<PROMISED_ARM: Promises.lookup ts lc_arm.(Local.promises) <-> msg_arm.(Msg.tid) = tid>>)>>) \/
+                            (<<PROMISED_PS: lc_ps.(PSLocal.promises) loc_ps <-> msg_arm.(Msg.tid) = tid>>)>>) \/
                exists val_ps released na,
                  (<<MSG: msg_ps = Message.message val_ps released na>>) /\
                  (<<VAL: sim_val val_ps msg_arm.(Msg.val)>>) /\
@@ -789,9 +789,9 @@ Module PStoRMWThread.
     { (* sim_memory *)
       s. clear INCR. inv MEM1. econs; s; i.
       { (* PRM_SOUND *)
-        revert PROMISED_ARM.
+        revert PROMISED_ARM1.
         rewrite Promises.unset_o. condtac; ss. i.
-        exploit PRM_SOUND; try exact PROMISED_ARM. i. des.
+        exploit PRM_SOUND; try exact PROMISED_ARM1. i. des.
         esplits; try eassumption.
         - erewrite Memory.remove_o; eauto. condtac; ss; eauto.
           des. clear X0. apply ntt_inj in a0. subst. congr.
@@ -829,10 +829,10 @@ Module PStoRMWThread.
           { apply ntt_inj in x8. congr. }
           exploit Memory.add_get1; try exact x6; eauto. i.
           esplits; eauto. unguardH x4. des; subst.
-          + left. split; ss. i.
-            exploit PROMISED1; eauto. i. des.
-            inv FULFILL.
-            { splits; ss. rewrite Promises.unset_o. condtac; ss. }
+          + left. splits; ss.
+            { erewrite Promises.unset_o. condtac; ss. }
+            i. exploit PROMISED1; eauto. i. des.
+            inv FULFILL; auto.
             erewrite (@BoolMap.remove_o prm2); try eassumption.
             erewrite (@BoolMap.remove_o gprm2); try eassumption.
             condtac; subst.
@@ -843,7 +843,6 @@ Module PStoRMWThread.
               rewrite Promises.unset_o. condtac; ss. auto.
             }
             splits; auto.
-            rewrite Promises.unset_o. condtac; ss.
           + right. esplits; eauto.
             rewrite Promises.unset_o. condtac; ss.
       }

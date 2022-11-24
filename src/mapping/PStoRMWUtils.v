@@ -217,6 +217,70 @@ Section RMWStep.
     destruct eu2. inv STEP. ss. subst. ss.
     apply join_r.
   Qed.
+
+  Variant fulfill_step tid ord ts (eu1 eu2: RMWExecUnit.t): Prop :=
+    | fulfill_step_fulfill
+        vloc vval res view_pre
+        (STATE: RMWState.step (RMWEvent.write ord vloc vval) eu1.(RMWExecUnit.state) eu2.(RMWExecUnit.state))
+        (FULFILL: Local.fulfill false ord vloc vval res ts tid view_pre
+                                eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem) eu2.(RMWExecUnit.local))
+        (MEM: eu2.(RMWExecUnit.mem) = eu1.(RMWExecUnit.mem))
+    | fulfill_step_fadd
+        ordr vloc vold vnew ts_old res lc1' view_pre lc1''
+        (STATE: RMWState.step (RMWEvent.fadd ordr ord vloc vold vnew)
+                              eu1.(RMWExecUnit.state) eu2.(RMWExecUnit.state))
+        (STEP_READ: Local.read true ordr vloc vold ts_old
+                               eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem) lc1')
+        (STEP_FULFILL: Local.fulfill true ord vloc vnew res ts tid view_pre
+                                     lc1' eu1.(RMWExecUnit.mem) lc1'')
+        (STEP_CONTROL: Local.control vold.(ValA.annot) lc1'' eu2.(RMWExecUnit.local))
+        (MEM: eu2.(RMWExecUnit.mem) = eu1.(RMWExecUnit.mem))
+  .
+
+  Lemma steps_fulfill_cases
+        n sc tid eu1 eu2
+        (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
+        (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot):
+    (<<NON_PROMISED: Promises.lookup (S n) eu1.(RMWExecUnit.local).(Local.promises) = false>>) /\
+    (<<STEPS: rtc (RMWExecUnit.state_step_dmbsy_over (Some (S n)) sc tid) eu1 eu2>>) \/
+    (exists eu1' eu1'',
+        (<<PROMISED: Promises.lookup (S n) eu1.(RMWExecUnit.local).(Local.promises) = true>>) /\
+        (<<STEPS1: rtc (RMWExecUnit.state_step_dmbsy_over (Some (S n)) sc tid) eu1 eu1'>>) /\
+        (<<FULFILL: __guard__ (exists ord, fulfill_step tid ord (S n) eu1' eu1'')>>) /\
+        (<<STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some (S n)) sc tid) eu1'' eu2>>)).
+  Proof.
+    destruct (Promises.lookup (S n) eu1.(RMWExecUnit.local).(Local.promises)) eqn:PROMISED1; cycle 1.
+    { left. splits; ss.
+      eapply RMWExecUnit.rtc_state_step_dmbsy_over_pf_S1; eauto.
+    }
+    right.
+    induction STEPS.
+    { rewrite PROMISES in *. ss. }
+    destruct (Promises.lookup (S n) (Local.promises (RMWExecUnit.local y))) eqn:Y.
+    { exploit IHSTEPS; eauto. i. des.
+      esplits; try exact FULFILL; eauto. econs 2; eauto.
+      eapply RMWExecUnit.state_step_dmbsy_over_pf_S2; eauto.
+    }
+    exploit (RMWExecUnit.rtc_state_step_dmbsy_over_pf_S1 (A:=A)); try exact STEPS; ss. i.
+    esplits; try exact x1; try refl; ss.
+    clear - H1 PROMISED1 Y.
+    inv H1. inv STEP. clear DMBSY.
+    destruct x as [st1 lc1 mem1], y as [st2 lc2 mem2]. ss. subst.
+    unguard. inv LOCAL; try congr.
+    - inv STEP. ss. congr.
+    - cut (ts = S n).
+      { i. subst. esplits. econs 1; eauto. }
+      inv STEP. ss.
+      revert Y. erewrite Promises.unset_o. condtac; ss. congr.
+    - cut (ts_new = S n).
+      { i. subst. esplits. econs 2; eauto. }
+      inv STEP_CONTROL. ss.
+      inv STEP_FULFILL. ss.
+      inv STEP_READ. ss.
+      revert Y. erewrite Promises.unset_o. condtac; ss. congr.
+    - inv STEP. ss. congr.
+    - inv LC. ss. congr.
+  Qed.
 End RMWStep.
 
 

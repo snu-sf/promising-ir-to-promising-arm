@@ -449,6 +449,38 @@ Section RMWLocal.
     - eauto using dmb_fulfillable.
     - eauto using control_fulfillable.
   Qed.
+
+  Lemma step_pf_S1
+        n e tid mem lc1 lc2
+        (STEP: step (Some n) e tid mem lc1 lc2)
+        (NON_PROMISED: Promises.lookup (S n) lc1.(Local.promises) = false):
+    step (Some (S n)) e tid mem lc1 lc2.
+  Proof.
+    inv STEP; eauto.
+    - econs 3; eauto. i. inv H1; auto.
+      inv STEP0. congr.
+    - econs 4; eauto. i. inv H1; auto.
+      inv STEP_READ. inv STEP_FULFILL. ss. congr.
+  Qed.
+
+  Lemma step_pf_S2
+        n e tid mem lc1 lc2
+        (STEP: step (Some n) e tid mem lc1 lc2)
+        (PROMISED: Promises.lookup (S n) lc2.(Local.promises) = true):
+    step (Some (S n)) e tid mem lc1 lc2.
+  Proof.
+    inv STEP; eauto.
+    - econs 3; eauto. i. inv H1; auto.
+      inv STEP0. ss.
+      revert PROMISED. erewrite Promises.unset_o.
+      condtac; ss. congr.
+    - econs 4; eauto. i. inv H1; auto.
+      inv STEP_CONTROL. ss.
+      inv STEP_FULFILL. ss.
+      inv STEP_READ. ss.
+      revert PROMISED. erewrite Promises.unset_o.
+      condtac; ss. congr.
+  Qed.
 End RMWLocal.
 End RMWLocal.
 
@@ -917,6 +949,107 @@ Section RMWExecUnit.
   Proof.
     induction STEPS; ss.
     inv H1. inv STEP. congr.
+  Qed.
+
+  Lemma state_step0_pf_S1
+        n tid e1 e2 eu1 eu2
+        (STEP: state_step0 (Some n) tid e1 e2 eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu1.(local).(Local.promises) = false):
+    state_step0 (Some (S n)) tid e1 e2 eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using RMWLocal.step_pf_S1.
+  Qed.
+
+  Lemma state_step_pf_S1
+        n tid eu1 eu2
+        (STEP: state_step (Some n) tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu1.(local).(Local.promises) = false):
+    state_step (Some (S n)) tid eu1 eu2.
+  Proof.
+    inv STEP. econs. eauto using state_step0_pf_S1.
+  Qed.
+
+  Lemma state_step_dmbsy_over_pf_S1
+        n sc tid eu1 eu2
+        (STEP: state_step_dmbsy_over (Some n) sc tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu1.(local).(Local.promises) = false):
+    state_step_dmbsy_over (Some (S n)) sc tid eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using state_step0_pf_S1.
+  Qed.
+
+  Lemma state_step_dmbsy_exact_pf_S1
+        n sc tid eu1 eu2
+        (STEP: state_step_dmbsy_exact (Some n) sc tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu1.(local).(Local.promises) = false):
+    state_step_dmbsy_exact (Some (S n)) sc tid eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using state_step0_pf_S1.
+  Qed.
+
+  Lemma rtc_state_step_dmbsy_over_pf_S1
+        n sc tid eu1 eu2
+        (STEPS: rtc (state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu1.(local).(Local.promises) = false):
+    rtc (state_step_dmbsy_over (Some (S n)) sc tid) eu1 eu2.
+  Proof.
+    induction STEPS; try refl.
+    exploit state_step_dmbsy_over_pf_S1; eauto. i.
+    econs 2; eauto. apply IHSTEPS.
+    inv H1. hexploit state_step0_promises_le; try eassumption. i.
+    destruct (Promises.lookup (S n) (Local.promises (local y))) eqn:Y; ss.
+    exploit H1; eauto.
+  Qed.
+
+  Lemma state_step0_pf_S2
+        n tid e1 e2 eu1 eu2
+        (STEP: state_step0 (Some n) tid e1 e2 eu1 eu2)
+        (PROMISED: Promises.lookup (S n) eu2.(local).(Local.promises) = true):
+    state_step0 (Some (S n)) tid e1 e2 eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using RMWLocal.step_pf_S2.
+  Qed.
+
+  Lemma state_step_pf_S2
+        n tid eu1 eu2
+        (STEP: state_step (Some n) tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu2.(local).(Local.promises) = true):
+    state_step (Some (S n)) tid eu1 eu2.
+  Proof.
+    inv STEP. econs. eauto using state_step0_pf_S2.
+  Qed.
+
+  Lemma state_step_dmbsy_over_pf_S2
+        n sc tid eu1 eu2
+        (STEP: state_step_dmbsy_over (Some n) sc tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu2.(local).(Local.promises) = true):
+    state_step_dmbsy_over (Some (S n)) sc tid eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using state_step0_pf_S2.
+  Qed.
+
+  Lemma state_step_dmbsy_exact_pf_S2
+        n sc tid eu1 eu2
+        (STEP: state_step_dmbsy_exact (Some n) sc tid eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu2.(local).(Local.promises) = true):
+    state_step_dmbsy_exact (Some (S n)) sc tid eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto using state_step0_pf_S2.
+  Qed.
+
+  Lemma rtc_state_step_dmbsy_over_pf_S2
+        n sc tid eu1 eu2
+        (STEPS: rtc (state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
+        (NON_PROMISED: Promises.lookup (S n) eu2.(local).(Local.promises) = true):
+    rtc (state_step_dmbsy_over (Some (S n)) sc tid) eu1 eu2.
+  Proof.
+    induction STEPS; try refl.
+    exploit IHSTEPS; eauto. i.
+    econs 2; eauto.
+    eapply state_step_dmbsy_over_pf_S2; eauto.
+    eapply rtc_state_step_promises_le; try exact NON_PROMISED.
+    eapply rtc_mon; try exact STEPS.
+    apply dmbsy_over_state_step.
   Qed.
 End RMWExecUnit.
 End RMWExecUnit.

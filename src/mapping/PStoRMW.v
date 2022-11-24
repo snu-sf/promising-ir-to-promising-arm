@@ -199,7 +199,7 @@ Module PStoRMW.
       rewrite LOC0 in *. inv LOC.
       unguardH x1. des; subst.
       - unguardH x0. des; subst.
-        + left. split; ss. i.
+        + left. splits; ss. i.
           exploit PROMISED0; eauto. i. des.
           exploit PROMISED; eauto. i. des.
           splits; ss.
@@ -360,7 +360,35 @@ Module PStoRMW.
     - esplits; [|right; eauto]. etrans; eauto.
   Qed.
 
-  Lemma sim_memory_S
+  Lemma sim_memory_S_already
+        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
+        msg_arm
+        (SIM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
+        (GET: Memory.get_msg (S n) mem_arm = Some msg_arm)
+        (TID: msg_arm.(Msg.tid) = tid)
+        (NON_PROMISED: Promises.lookup (S n) lc_arm.(Local.promises) = false):
+    sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm.
+  Proof.
+    inv SIM.
+    move GET at bottom.
+    move NON_PROMISED at bottom.
+    econs; eauto; i.
+    { exploit PRM_SOUND; eauto. i. des.
+      esplits; eauto. i. inv H; auto. congr.
+    }
+    { exploit PRM_COMPLETE; eauto. i. des.
+      esplits; eauto. etrans; eauto. unfold le. nia.
+    }
+    { exploit MEM_SOUND; eauto. i. des.
+      esplits; eauto. clear x1.
+      unguardH x0. des; [left|right]; esplits; eauto.
+      i. inv H; auto.
+      rewrite GET_ARM in *. inv GET.
+      exploit PROMISED_ARM0; eauto. i. congr.
+    }
+  Qed.
+
+  Lemma sim_memory_S_other
         tid tid'
         n lc_ps gprm_ps mem_ps lc_arm mem_arm
         lc_ps' lc_arm'
@@ -394,10 +422,65 @@ Module PStoRMW.
       exploit PROMISED0; try refl. i. des.
       exploit PROMISED_PS0; try refl. i.
       repeat split; try congr; i.
-      + inv DISJOINT. exploit PROMISES_DISJOINT; eauto. ss.
-      + exploit PRM_SOUND; eauto. i. des.
-        rewrite GET_ARM in *. inv GET_ARM0. ss.
+      inv DISJOINT. exploit PROMISES_DISJOINT; eauto. ss.
   Qed.
+
+  Lemma sim_memory_S_fulfill
+        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
+        msg_arm
+        (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
+        (RSV_LE: Memory.le (PSLocal.reserves lc_ps) mem_ps)
+        (GET_ARM: Memory.get_msg (S n) mem_arm = Some msg_arm)
+        (MSG_TID: msg_arm.(Msg.tid) = tid)
+        (FULFILLED: Promises.lookup (S n) lc_arm.(Local.promises) = false):
+    sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm.
+  Proof.
+    inv MEM.
+    move GET_ARM at bottom.
+    move FULFILLED at bottom.
+    exploit MEM_SOUND; eauto. i. des.
+    unguardH x0. des; subst.
+    { exploit PROMISED_ARM0; eauto. congr. }
+    econs; eauto; i.
+    - exploit PRM_SOUND; try exact PROMISED_ARM0. i. des.
+      esplits; eauto. i. inv H; auto. congr.
+    - exploit PRM_COMPLETE; eauto. i. des.
+      esplits; eauto. etrans; eauto. unfold le. nia.
+    - exploit MEM_SOUND; try exact GET_ARM0. i. des.
+      esplits; eauto. clear x2.
+      unguardH x0. des; [left|right]; esplits; eauto.
+      i. inv H; auto. congr.
+  Qed.
+
+  (* Lemma sim_memory_S_fulfill *)
+  (*       tid n lc_ps gprm_ps mem_ps lc_arm mem_arm *)
+  (*       loc from msg *)
+  (*       (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm) *)
+  (*       (RSV_LE: Memory.le (PSLocal.reserves lc_ps) mem_ps) *)
+  (*       (GET: PSMemory.get loc (ntt (S n)) mem_ps = Some (from, msg)) *)
+  (*       (MSG: msg <> Message.reserve): *)
+  (*   sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm. *)
+  (* Proof. *)
+  (*   inv MEM. move GET at bottom. *)
+  (*   exploit MEM_COMPLETE; eauto. *)
+  (*   { ss. eapply TimeFacts.le_lt_lt; try apply PSTime.bot_spec. *)
+  (*     apply PSTime.incr_spec. *)
+  (*   } *)
+  (*   i. des. *)
+  (*   apply ntt_inj in TO. subst. *)
+  (*   econs; i; eauto. *)
+  (*   - exploit PRM_SOUND; eauto. i. des. esplits; eauto. i. *)
+  (*     inv H; eauto. *)
+  (*     rewrite GET_ARM0 in *. inv GET_ARM. *)
+  (*     rewrite LOC0 in *. inv LOC. *)
+  (*     exploit RSV_LE; try eassumption. i. congr. *)
+  (*   - exploit PRM_COMPLETE; eauto. i. des. *)
+  (*     esplits; eauto. etrans; eauto. apply le_S. refl. *)
+  (*   - exploit MEM_SOUND; eauto. i. des. *)
+  (*     esplits; eauto. unguardH x0. des; subst. *)
+  (*     + left. splits; ss. i. inv H; auto. ss. congr. *)
+  (*     + right. esplits; eauto. *)
+  (* Qed. *)
 
   Lemma sim_thread_exec_fulfill_S
         tid n th1_ps eu
@@ -409,12 +492,31 @@ Module PStoRMW.
         (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      ((<<SIM2: sim_thread_exec tid n false th2_ps eu>>) /\
+      ((<<SIM2: sim_thread_exec tid (S n) false th2_ps eu>>) /\
        (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
        exists e_ps th3_ps,
          (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
          (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
   Proof.
+    inv SIM.
+    exploit (steps_fulfill_cases (A:=unit)); try exact STEPS2; ss. i. unguard. des.
+    { esplits; try refl. left. split; ss.
+      econs; try exact PROMISES; eauto.
+      inv SIM_THREAD. econs; ss.
+      inv WF_ARM. exploit PRM; eauto. i. des.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. i.
+      rewrite <- x0 in *.
+      eapply sim_memory_S_already; eauto.
+    }
+
+    destruct (OrdW.ge OrdW.pln ord).
+    { (* pln *)
+      admit.
+    }
+
+    { (* >= strong *)
+      admit.
+    }
   Admitted.
 
   Lemma sim_S
