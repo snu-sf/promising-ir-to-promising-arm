@@ -128,10 +128,20 @@ Section RMWLocal.
   #[local]
   Hint Constructors step: core.
 
-  Lemma pf_step_step n:
+  Lemma step_pf_none n:
     step n <5= step None.
   Proof.
     i. inv PR; eauto.
+  Qed.
+
+  Lemma step_pf_mon
+        m n
+        (PF_LE: m <= n):
+    step (Some n) <5= step (Some m).
+  Proof.
+    i. inv PR; eauto.
+    - econs 3; eauto. i. apply PF. etrans; eauto.
+    - econs 4; eauto. i. apply PF. etrans; eauto.
   Qed.
 
   Lemma step_incr
@@ -560,11 +570,68 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors state_step_dmbsy_over: core.
 
-  Lemma pf_state_step_state_step n:
+  Lemma state_step0_pf_none n:
+    state_step0 n <5= state_step0 None.
+  Proof.
+    i. inv PR.
+    econs; eauto using RMWLocal.step_pf_none.
+  Qed.
+
+  Lemma state_step_pf_none n:
     state_step n <3= state_step None.
   Proof.
-    i. inv PR. inv STEP. econs.
-    econs; eauto using RMWLocal.pf_step_step.
+    i. inv PR. econs.
+    eauto using state_step0_pf_none.
+  Qed.
+
+  Lemma state_step_dmbsy_exact_pf_none n:
+    state_step_dmbsy_exact n <4= state_step_dmbsy_exact None.
+  Proof.
+    i. inv PR.
+    econs; eauto using state_step0_pf_none.
+  Qed.
+
+  Lemma state_step_dmbsy_over_pf_none n:
+    state_step_dmbsy_over n <4= state_step_dmbsy_over None.
+  Proof.
+    i. inv PR.
+    econs; eauto using state_step0_pf_none.
+  Qed.
+
+  Lemma state_step0_pf_mon
+        m n
+        (PF_LE: m <= n):
+    state_step0 (Some n) <5= state_step0 (Some m).
+  Proof.
+    i. inv PR.
+    econs; eauto using RMWLocal.step_pf_mon.
+  Qed.
+
+  Lemma state_step_pf_mon
+        m n
+        (PF_LE: m <= n):
+    state_step (Some n) <3= state_step (Some m).
+  Proof.
+    i. inv PR. econs.
+    eauto using state_step0_pf_mon.
+  Qed.
+
+  Lemma state_step_dmbsy_exact_pf_mon
+        m n
+        (PF_LE: m <= n):
+    state_step_dmbsy_exact (Some n) <4= state_step_dmbsy_exact (Some m).
+  Proof.
+    i. inv PR.
+    econs; eauto using state_step0_pf_mon.
+  Qed.
+
+  Lemma state_step_dmbsy_over_pf_mon
+        m n
+        (PF_LE: m <= n):
+    state_step_dmbsy_over (Some n) <4= state_step_dmbsy_over (Some m).
+  Proof.
+    i. inv PR.
+    econs; eauto using state_step0_pf_mon.
   Qed.
 
   Lemma dmbsy_state_step n sc:
@@ -602,6 +669,14 @@ Section RMWExecUnit.
   Proof.
     i. inv PR. econs; eauto.
     i. apply DMBSY in H1. subst. refl.
+  Qed.
+
+  Lemma dmbsy_over_sc_mon
+        n sc1 sc2
+        (SC_LE: sc1 <= sc2):
+    state_step_dmbsy_over n sc2 <3= state_step_dmbsy_over n sc1.
+  Proof.
+    i. inv PR. econs; eauto. i. etrans; eauto.
   Qed.
 
   Lemma state_step_dmbsy_over_S

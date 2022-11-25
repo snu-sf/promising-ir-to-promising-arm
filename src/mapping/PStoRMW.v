@@ -107,7 +107,7 @@ Module PStoRMW.
     esplits; eauto. left. split; ss.
     econs.
     - etrans; [exact STEPS1|].
-      eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step.
+      eapply rtc_mon; try eapply RMWExecUnit.state_step_pf_none.
       eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step.
       eapply rtc_n1; try exact STEPS_DMBSY1.
       eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto.
@@ -428,14 +428,13 @@ Module PStoRMW.
   Lemma sim_memory_S_fulfill
         tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
         msg_arm
-        (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
-        (RSV_LE: Memory.le (PSLocal.reserves lc_ps) mem_ps)
+        (SIM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
         (GET_ARM: Memory.get_msg (S n) mem_arm = Some msg_arm)
         (MSG_TID: msg_arm.(Msg.tid) = tid)
         (FULFILLED: Promises.lookup (S n) lc_arm.(Local.promises) = false):
     sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm.
   Proof.
-    inv MEM.
+    inv SIM.
     move GET_ARM at bottom.
     move FULFILLED at bottom.
     exploit MEM_SOUND; eauto. i. des.
@@ -452,35 +451,71 @@ Module PStoRMW.
       i. inv H; auto. congr.
   Qed.
 
-  (* Lemma sim_memory_S_fulfill *)
-  (*       tid n lc_ps gprm_ps mem_ps lc_arm mem_arm *)
-  (*       loc from msg *)
-  (*       (MEM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm) *)
-  (*       (RSV_LE: Memory.le (PSLocal.reserves lc_ps) mem_ps) *)
-  (*       (GET: PSMemory.get loc (ntt (S n)) mem_ps = Some (from, msg)) *)
-  (*       (MSG: msg <> Message.reserve): *)
-  (*   sim_memory tid (S n) lc_ps gprm_ps mem_ps lc_arm mem_arm. *)
-  (* Proof. *)
-  (*   inv MEM. move GET at bottom. *)
-  (*   exploit MEM_COMPLETE; eauto. *)
-  (*   { ss. eapply TimeFacts.le_lt_lt; try apply PSTime.bot_spec. *)
-  (*     apply PSTime.incr_spec. *)
-  (*   } *)
-  (*   i. des. *)
-  (*   apply ntt_inj in TO. subst. *)
-  (*   econs; i; eauto. *)
-  (*   - exploit PRM_SOUND; eauto. i. des. esplits; eauto. i. *)
-  (*     inv H; eauto. *)
-  (*     rewrite GET_ARM0 in *. inv GET_ARM. *)
-  (*     rewrite LOC0 in *. inv LOC. *)
-  (*     exploit RSV_LE; try eassumption. i. congr. *)
-  (*   - exploit PRM_COMPLETE; eauto. i. des. *)
-  (*     esplits; eauto. etrans; eauto. apply le_S. refl. *)
-  (*   - exploit MEM_SOUND; eauto. i. des. *)
-  (*     esplits; eauto. unguardH x0. des; subst. *)
-  (*     + left. splits; ss. i. inv H; auto. ss. congr. *)
-  (*     + right. esplits; eauto. *)
-  (* Qed. *)
+  Variant promised_thread {lang} (loc: PSLoc.t) (th1 th2: PSThread.t lang): Prop :=
+    | promised_thread_intro
+        (STATE: th2.(PSThread.state) = th1.(PSThread.state))
+        (TVIEW: th2.(PSThread.local).(PSLocal.tview) = th1.(PSThread.local).(PSLocal.tview))
+        (PRM: th2.(PSThread.local).(PSLocal.promises) =
+              fun loc' => if PSLoc.eq_dec loc' loc then true
+                       else th1.(PSThread.local).(PSLocal.promises) loc')
+        (RSV: th2.(PSThread.local).(PSLocal.reserves) = th1.(PSThread.local).(PSLocal.reserves))
+        (SC: th2.(PSThread.global).(Global.sc) = th1.(PSThread.global).(Global.sc))
+        (GPRM: th2.(PSThread.global).(Global.promises) =
+               fun loc' => if PSLoc.eq_dec loc' loc then true
+                        else th1.(PSThread.global).(Global.promises) loc')
+        (MEM: th2.(PSThread.global).(Global.memory) = th1.(PSThread.global).(Global.memory))
+  .
+
+  Lemma sim_memory_S_promise
+        tid n lc1_ps gprm1_ps mem1_ps lc_arm mem_arm
+        msg_arm
+        loc lc2_ps gprm2_ps mem2_ps
+        (SIM: sim_memory tid n lc1_ps gprm1_ps mem1_ps lc_arm mem_arm)
+        (PRM_ARM: Promises.lookup (S n) lc_arm.(Local.promises) = true)
+        (GET_ARM: Memory.get_msg (S n) mem_arm = Some msg_arm)
+        (MSG_TID: msg_arm.(Msg.tid) = tid)
+        (LOC: msg_arm.(Msg.loc) = Zpos loc)
+        (TVIEW: lc2_ps.(PSLocal.tview) = lc1_ps.(PSLocal.tview))
+        (PRM: lc2_ps.(PSLocal.promises) =
+              fun loc' => if PSLoc.eq_dec loc' loc then true
+                       else lc1_ps.(PSLocal.promises) loc')
+        (RSV: lc2_ps.(PSLocal.reserves) = lc1_ps.(PSLocal.reserves))
+        (GPRM: gprm2_ps =
+               fun loc' => if PSLoc.eq_dec loc' loc then true
+                        else gprm1_ps loc')
+        (MEM: mem2_ps = mem1_ps)
+        (NON_OTHER: gprm1_ps loc -> lc1_ps.(PSLocal.promises) loc):
+    sim_memory tid (S n) lc2_ps gprm2_ps mem2_ps lc_arm mem_arm.
+  Proof.
+    inv SIM. econs; ss; i.
+    { exploit PRM_SOUND; eauto. i. des.
+      esplits; eauto.
+      - rewrite RSV. eassumption.
+      - i. inv H.
+        + rewrite GET_ARM0 in *. inv GET_ARM.
+          rewrite LOC0 in *. inv LOC.
+          rewrite PRM. condtac; ss.
+        + rewrite PRM. condtac; ss. auto.
+    }
+    { revert PROMISED_PS.
+      rewrite PRM. condtac; i.
+      - subst. esplits; eauto. refl.
+      - exploit PRM_COMPLETE; eauto. i. des.
+        esplits; eauto. etrans; eauto. unfold le. nia.
+    }
+    { exploit MEM_SOUND; eauto. i. des.
+      esplits; eauto. clear x1.
+      unguardH x0. des; [|right; esplits; eauto].
+      left. splits; ss. i. inv H.
+      - rewrite GET_ARM0 in *. inv GET_ARM.
+        rewrite LOC0 in *. inv LOC.
+        rewrite PRM. condtac; ss.
+      - rewrite PRM. condtac; eauto.
+        subst. repeat split; ss.
+        exploit PROMISED; ss. i. des. eauto.
+    }
+    { rewrite TVIEW. eauto. }
+  Qed.
 
   Lemma sim_thread_exec_fulfill_S
         tid n th1_ps eu
@@ -509,13 +544,120 @@ Module PStoRMW.
       eapply sim_memory_S_already; eauto.
     }
 
-    destruct (OrdW.ge OrdW.pln ord).
+    destruct (OrdW.ge OrdW.pln ord) eqn:ORD.
     { (* pln *)
-      admit.
+      exploit (fulfill_step_after (A:=unit)); eauto. i. des.
+      replace eu1''.(RMWExecUnit.mem) with eu1.(RMWExecUnit.mem) in GET_ARM; cycle 1.
+      { exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
+          try eapply rtc_mon; try exact STEPS0;
+          try apply RMWExecUnit.dmbsy_over_state_step. i.
+        inv FULFILL; congr.
+      }
+      dup SIM_THREAD. inv SIM_THREAD0. clear SIM_STATE SIM_TVIEW.
+      inv SIM_MEM. clear PRM_SOUND PRM_COMPLETE MEM_COMPLETE FWD RELEASED.
+      exploit MEM_SOUND; eauto. clear MEM_SOUND. i. des.
+      cut (exists th2_ps,
+              (<<STEPS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+              ((<<PROMISED: promised_thread loc_ps th1_ps th2_ps>>) /\
+               (<<NON_OTHER: th1_ps.(PSThread.global).(Global.promises) loc_ps ->
+                             th1_ps.(PSThread.local).(PSLocal.promises) loc_ps>>) \/
+               exists e_ps th3_ps,
+                 (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+                 (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>))).
+      { i. des; [|esplits; eauto].
+        esplits; try exact STEPS.
+        left. split; cycle 1.
+        { inv PROMISED1. rewrite SC. ss. }
+        econs.
+        - exact STEPS1.
+        - inv SIM_THREAD. econs; try by (inv PROMISED1; congr).
+          eapply sim_memory_S_promise; eauto; apply PROMISED1.
+        - refl.
+        - etrans; [exact STEPS0|].
+          econs 2; [|exact STEPS3].
+          exploit (fulfill_step_state_step0_pln (A:=unit)); eauto. i. des.
+          econs; eauto. ss.
+        - ss.
+      }
+
+      destruct (th1_ps.(PSThread.local).(PSLocal.promises) loc_ps) eqn:PRM_PS.
+      { esplits; try refl. left.
+        split; ss. econs; ss.
+        - extensionality l. condtac; ss; congr.
+        - extensionality l. condtac; ss. subst.
+          inv LC_WF1_PS. eauto.
+      }
+      { destruct (th1_ps.(PSThread.global).(Global.promises) loc_ps) eqn:GPRM_PS; cycle 1.
+        { (* promise *)
+          destruct th1_ps as [st1 lc1 mem1]. ss. esplits.
+          - econs 2; try refl. econs.
+            + econs 1. econs 1. econs.
+              * econs 1; econs; eauto.
+              * refl.
+              * refl.
+            + ss.
+          - left. ss.
+        }
+
+        (* promised by another thread *)
+        admit.
+      }
     }
 
     { (* >= strong *)
-      admit.
+      assert (STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1'').
+      { clear - STEPS0 FULFILL ORD.
+        exploit (fulfill_step_state_step0 (A:=unit)); eauto. i. des.
+        exploit (fulfill_step_vwn (A:=unit)); eauto. i.
+        eapply rtc_n1; cycle 1.
+        { econs; eauto. ss. }
+        clear - STEPS0 x0.
+        induction STEPS0; try refl.
+        econs 2; try apply IHSTEPS0; ss.
+        inv H. econs.
+        - eapply RMWExecUnit.state_step0_pf_mon; try exact STEP. nia.
+        - i. exploit DMBSY; eauto. i.
+          destruct e; ss. destruct rr, rw, wr, ww; ss.
+          cut (S n <= y.(RMWExecUnit.local).(Local.vwn).(View.ts)).
+          { i. exfalso.
+            exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
+              try eapply rtc_mon; try exact STEPS0;
+              try apply RMWExecUnit.dmbsy_over_state_step. i.
+            inv x3. inv LC. unfold le in *. nia.
+          }
+          clear - STEP x2.
+          inv STEP. inv LOCAL; ss. inv STEP. rewrite LC2. ss.
+          inv EVENT. ss.
+          etrans; [eauto|].
+          etrans; [|apply join_r].
+          eapply join_le; [apply Time.order|..]; ss.
+          apply join_l.
+      }
+      exploit sim_thread_rtc_step; try exact STEPS; eauto.
+      { eapply RMWExecUnit.rtc_state_step_rmw_wf; eauto. }
+      { exploit (fulfill_step_vro (A:=unit)); eauto; try by destruct ord. i. des.
+        unfold le. nia.
+      }
+      { eapply RMWExecUnit.rtc_state_step_fulfillable;
+          try eapply rtc_mon;
+          try apply RMWExecUnit.dmbsy_over_state_step;
+          try exact STEPS3.
+        ii. revert PROMISED1.
+        rewrite PROMISES, Promises.lookup_bot. ss.
+      }
+      i. des; [|esplits; eauto].
+      esplits; try exact STEPS_PS. left. split; ss.
+      econs.
+      - etrans; [eauto|].
+        eapply rtc_mon; try exact STEPS. i.
+        eapply RMWExecUnit.state_step_pf_none.
+        eapply RMWExecUnit.dmbsy_exact_state_step. eauto.
+      - inv SIM2. econs; eauto.
+        exploit (fulfill_step_after (A:=unit)); eauto. i. des.
+        eapply sim_memory_S_fulfill; eauto.
+      - refl.
+      - eauto.
+      - ss.
     }
   Admitted.
 

@@ -237,6 +237,76 @@ Section RMWStep.
         (MEM: eu2.(RMWExecUnit.mem) = eu1.(RMWExecUnit.mem))
   .
 
+  Lemma fulfill_step_vro
+        tid ord ts eu1 eu2
+        (STEP: fulfill_step tid ord ts eu1 eu2)
+        (ORD: OrdW.ge ord OrdW.strong):
+    eu1.(RMWExecUnit.local).(Local.vro).(View.ts) < ts /\
+    eu2.(RMWExecUnit.local).(Local.vro).(View.ts) < ts.
+  Proof.
+    destruct eu1, eu2. inv STEP.
+    - inv FULFILL. ss. subst. s.
+      inv WRITABLE. ss. split.
+      + eapply Nat.le_lt_trans; try exact EXT.
+        rewrite ORD. ss. ets.
+      + eapply Nat.le_lt_trans; try exact EXT.
+        rewrite ORD. ss. ets.
+    - inv STEP_CONTROL. ss. subst.
+      inv STEP_FULFILL. ss.
+      cut (View.ts (Local.vro lc1') < ts).
+      { i. split; ss.
+        eapply Nat.le_lt_trans; try exact H1.
+        clear - STEP_READ.
+        eapply Local.read_incr. eauto.
+      }
+      inv WRITABLE. ss.
+      eapply Nat.le_lt_trans; try exact EXT.
+      rewrite ORD. ss. ets.
+  Qed.
+
+  Lemma fulfill_step_vwn
+        tid ord ts eu1 eu2
+        (STEP: fulfill_step tid ord ts eu1 eu2):
+    eu1.(RMWExecUnit.local).(Local.vwn).(View.ts) < ts.
+  Proof.
+    destruct eu1, eu2. inv STEP.
+    - inv FULFILL. ss. subst. s.
+      inv WRITABLE. ss.
+      eapply Nat.le_lt_trans; try exact EXT. ets.
+    - inv STEP_CONTROL. ss. subst.
+      inv STEP_FULFILL.
+      cut (View.ts (Local.vwn lc1') < ts).
+      { i. eapply Nat.le_lt_trans; try exact H1.
+        clear - STEP_READ.
+        eapply Local.read_incr. eauto.
+      }
+      inv WRITABLE. ss.
+      eapply Nat.le_lt_trans; try exact EXT. ets.
+  Qed.
+
+  Lemma fulfill_step_after
+        tid ord ts eu1 eu2
+        (STEP: fulfill_step tid ord ts eu1 eu2):
+    exists msg_arm,
+      (<<GET_ARM: Memory.get_msg ts eu2.(RMWExecUnit.mem) = Some msg_arm>>) /\
+      (<<TID: msg_arm.(Msg.tid) = tid>>) /\
+      (<<PRM_BEFORE: Promises.lookup ts eu1.(RMWExecUnit.local).(Local.promises) = true>>) /\
+      (<<PRM_AFTER: Promises.lookup ts eu2.(RMWExecUnit.local).(Local.promises) = false>>).
+  Proof.
+    destruct eu1, eu2.
+    inv STEP; ss; subst.
+    - inv FULFILL. s.
+      rewrite Promises.unset_o.
+      condtac; try congr.
+      esplits; eauto.
+    - inv STEP_READ. ss.
+      inv STEP_FULFILL. ss. clear WRITABLE.
+      inv STEP_CONTROL. ss.
+      rewrite Promises.unset_o.
+      condtac; try congr.
+      esplits; eauto.
+  Qed.
+
   Lemma steps_fulfill_cases
         n sc tid eu1 eu2
         (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
@@ -280,6 +350,44 @@ Section RMWStep.
       revert Y. erewrite Promises.unset_o. condtac; ss. congr.
     - inv STEP. ss. congr.
     - inv LC. ss. congr.
+  Qed.
+
+  Lemma fulfill_step_state_step0
+        m tid ord n eu1 eu2
+        (PF_LE: m < n)
+        (STEP: fulfill_step tid ord n eu1 eu2):
+    exists e,
+      (<<STEP: RMWExecUnit.state_step0 (Some m) tid e e eu1 eu2>>) /\
+      (<<DMBSY: ~ RMWExecUnit.is_dmbsy e>>).
+  Proof.
+    inv STEP.
+    - esplits.
+      + econs; eauto. econs 3; eauto.
+        unfold le. i. nia.
+      + ss.
+    - esplits.
+      + econs; eauto. econs 4; eauto.
+        unfold le. i. nia.
+      + ss.
+  Qed.
+
+  Lemma fulfill_step_state_step0_pln
+        m tid ord n eu1 eu2
+        (ORD: OrdW.ge OrdW.pln ord)
+        (STEP: fulfill_step tid ord n eu1 eu2):
+    exists e,
+      (<<STEP: RMWExecUnit.state_step0 m tid e e eu1 eu2>>) /\
+      (<<DMBSY: ~ RMWExecUnit.is_dmbsy e>>).
+  Proof.
+    inv STEP.
+    - esplits.
+      + econs; eauto. econs 3; eauto.
+        destruct m; ss.
+      + ss.
+    - esplits.
+      + econs; eauto. econs 4; eauto.
+        destruct m; ss.
+      + ss.
   Qed.
 End RMWStep.
 
