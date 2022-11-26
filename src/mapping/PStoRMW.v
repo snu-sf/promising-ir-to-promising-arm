@@ -360,6 +360,49 @@ Module PStoRMW.
     - esplits; [|right; eauto]. etrans; eauto.
   Qed.
 
+  Lemma sim_memory_future_S
+        gl gl'
+        tid n lc_ps lc_arm mem_arm
+        tid' lc_ps' lc_arm'
+        (SIM: sim_memory tid n lc_ps (Global.promises gl) (Global.memory gl) lc_arm mem_arm)
+        (FUTURE: Global.future gl gl')
+        (WF': PSLocal.wf lc_ps gl')
+        (SIM': sim_memory tid' (S n) lc_ps' (Global.promises gl') (Global.memory gl') lc_arm' mem_arm):
+    sim_memory tid n lc_ps (Global.promises gl') (Global.memory gl') lc_arm mem_arm.
+  Proof.
+    inv SIM. inv SIM'. econs; ss; i.
+    { (* MEM_SOUND *)
+      exploit MEM_SOUND0; eauto. i. des.
+      esplits; eauto. clear x1.
+      exploit MEM_SOUND; eauto. i. des. clear x2.
+      rewrite LOC0 in *. inv LOC.
+      unguardH x1. des; subst.
+      - unguardH x0. des; subst.
+        + left. splits; ss. i.
+          exploit PROMISED0; eauto.
+          { unfold le in *. nia. }
+          i. des.
+          exploit PROMISED; eauto. i. des.
+          splits; ss.
+        + right. esplits; eauto.
+          destruct (Promises.lookup ts (Local.promises lc_arm)) eqn:PRM; ss.
+          exploit PRM_SOUND; eauto. i. des.
+          rewrite GET_ARM0 in *. inv GET_ARM.
+          rewrite LOC in *. inv LOC0.
+          inv WF'. exploit RESERVES; eauto. i. congr.
+      - right.
+        exploit PSMemory.future_get1; try apply FUTURE; eauto. i. des.
+        unguardH x0. des; try congr.
+        rewrite x1 in *. inv GET_PS.
+        esplits; eauto.
+    }
+    { (* FWD *)
+      exploit FWD; eauto. i. des.
+      exploit PSMemory.future_get1; try apply FUTURE; eauto. i. des.
+      esplits; eauto.
+    }
+  Qed.
+
   Lemma sim_memory_S_already
         tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
         msg_arm
@@ -517,7 +560,7 @@ Module PStoRMW.
     { rewrite TVIEW. eauto. }
   Qed.
 
-  Lemma sim_thread_exec_fulfill_S
+  Lemma sim_thread_exec_S
         tid n th1_ps eu
         (SIM: sim_thread_exec tid n true th1_ps eu)
         (PROMISED: Promises.lookup (S n) eu.(RMWExecUnit.local).(Local.promises) = true)
@@ -686,5 +729,75 @@ Module PStoRMW.
     destruct a as [[lang st1_ps] lc1_ps]. inv REL.
     apply inj_pair2 in H2. subst.
     rename H0 into FIND_PS.
-  Admitted.
+    dup WF1_PS. inv WF1_PS0. inv WF.
+    exploit THREADS; eauto.
+    intro LC_WF1_PS. rename GL_WF into GL_WF1_PS.
+    clear DISJOINT THREADS PROMISES.
+    dup WF_ARM. inv WF_ARM0. exploit WF; eauto. s. intro WF1_ARM.
+    clear WF.
+    exploit sim_thread_exec_S; try exact SIM_THREAD; eauto. i. des; cycle 1.
+    { destruct th3_ps.
+      esplits; try refl. right. esplits.
+      rewrite <- FAILURE. econs.
+      - eauto.
+      - eassumption.
+      - eassumption.
+      - ss.
+    }
+
+    exploit PSThread.rtc_tau_step_future; try exact SIM2; eauto. s. i. des.
+    exploit sim_thread_exec_consistent; try exact SIM2; eauto.
+    { i. etrans; eauto. apply le_ntt. nia. }
+    intro CONS.
+    exploit (@rtc_thread_tau_step_rtc_tau_step (Configuration.mk ths1 gl1));
+      try exact STEPS_PS; eauto. s. i. des.
+    esplits; try exact x0. left.
+    econs; s; cycle 1.
+    { i. etrans; eauto. econs. apply PSTime.incr_spec. }
+    intro tid'. rewrite IdentMap.gsspec. condtac.
+    { subst. rewrite FIND_ARM. econs. econs.
+      destruct th2_ps. ss.
+    }
+    specialize (SIM_THREADS tid').
+    inv SIM_THREADS; destruct (IdentMap.find tid' ths1) eqn:FIND_PS'; ss.
+    rename H into FIND_ARM'. inv H0.
+    destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm']. inv REL.
+    apply inj_pair2 in H1. subst. econs. econs.
+    inv SIM_THREAD0. econs; try exact STEPS1; try exact PROMISES; try refl.
+    - clear - WF1_PS GET_ARM FIND_PS STEPS_PS SIM2 GL_FUTURE n0 FIND_PS' STEPS1 SIM_THREAD1.
+      inv SIM_THREAD1. econs; ss. clear SIM_STATE SIM_TVIEW.
+      inv WF1_PS. inv WF. ss.
+      exploit (THREADS tid); eauto. intro LC_WF_PS.
+      exploit (THREADS tid'); eauto. intro LC_WF_PS'.
+      exploit DISJOINT; try exact n0; eauto.
+      clear DISJOINT THREADS PROMISES. intro DISJOINT. symmetry in DISJOINT.
+      exploit PSThread.rtc_tau_step_disjoint;
+        try exact STEPS_PS; try exact DISJOINT; ss. i. des.
+      inv SIM2. inv SIM_THREAD. clear eu2 STEPS2 PROMISES SIM_STATE SIM_TVIEW.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. s. i.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS0. s. i.
+      rewrite x0, x1 in *. clear x0 x1.
+      exploit sim_memory_future_S; try exact GL_FUTURE; try exact SIM_MEM0; eauto. intro X.
+      eapply sim_memory_S_other; try exact X; try exact SIM_MEM0; eauto.
+      symmetry. ss.
+    - exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. s. i.
+      rewrite <- x1 in GET_ARM.
+      clear - n0 GET_ARM STEPS2.
+      revert GET_ARM. induction STEPS2; i; try refl.
+      exploit IHSTEPS2.
+      { inv H. inv STEP. congr. }
+      i. econs 2; eauto.
+      clear - n0 H GET_ARM.
+      inv H. econs; eauto.
+      inv STEP. econs; eauto.
+      inv LOCAL.
+      + econs 1; eauto.
+      + econs 2; eauto.
+      + econs 3; eauto. i. inv H; auto.
+        inv STEP. rewrite GET_ARM in *. congr.
+      + econs 4; eauto. i. inv H; auto.
+        inv STEP_FULFILL. i. rewrite GET_ARM in *. congr.
+      + econs 5; eauto.
+      + econs 6; eauto.
+  Qed.
 End PStoRMW.
