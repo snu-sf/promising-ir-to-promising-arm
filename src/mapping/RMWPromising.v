@@ -221,6 +221,9 @@ Section RMWLocal.
         (VWN: le lc.(Local.vwn) (join lc.(Local.vro) lc.(Local.vwo)))
         (FWD: forall loc,
             le (lc.(Local.fwdbank) loc).(FwdItem.ts) (View.ts (lc.(Local.coh) loc)))
+        (FWD_VIEW: forall loc,
+            le (lc.(Local.fwdbank) loc).(FwdItem.view).(View.ts)
+               (lc.(Local.fwdbank) loc).(FwdItem.ts))
         (PRM: Promises.sound tid (Local.promises lc) mem)
         (PRM_COH: forall ts msg
                          (MSG: Memory.get_msg ts mem = Some msg)
@@ -290,6 +293,11 @@ Section RMWLocal.
     - etrans; eauto.
       eapply join_le; try apply View.order. refl.
     - unfold fun_add. condtac; ss.
+    - unfold fun_add. condtac; ss.
+      inv WRITABLE. apply Nat.lt_le_incl.
+      eapply Nat.le_lt_trans; try exact EXT. ss.
+      eapply join_le; [apply Time.order|..]; try refl.
+      apply join_l.
     - rewrite Promises.unset_o. condtac; ss.
       + r in e. subst.
         destruct msg. rewrite MSG in *. inv MSG0. ss.
