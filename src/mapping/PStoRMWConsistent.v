@@ -1345,6 +1345,180 @@ Module PStoRMWConsistent.
     }
   Qed.
 
+  Lemma sim_state_cons_internal
+        n st1_ps st1_arm e_arm st2_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.internal):
+    exists st2_ps,
+      (<<STEP_PS: State.step ProgramEvent.silent st1_ps st2_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; (try by inv STEP); cycle 1.
+    { (* dowhile *)
+      inv STEP. esplits; [econs 4|]; ss.
+      econs; ss. unfold ps_to_rmw_stmts.
+      rewrite List.map_app. ss.
+    }
+
+    destruct i; ss; inv STEP.
+    { (* skip *)
+      esplits; [econs 1; econs 1|..]; ss.
+    }
+    { (* assign *)
+      esplits; [econs 1; econs 2|..]; ss.
+      econs; ss.
+      apply sim_regs_cons_add; ss.
+      apply sim_regs_cons_eval_expr; ss.
+    }
+  Qed.
+
+  Lemma sim_state_cons_control
+        n st1_ps st1_arm e_arm st2_arm
+        ctrl
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.control ctrl)
+        (CTRL: le ctrl.(View.ts) n):
+    exists st2_ps,
+      (<<STEP_PS: State.step ProgramEvent.silent st1_ps st2_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; inv STEP.
+    condtac.
+    - esplits; [econs 2|..]; ss.
+      + des_ifs.
+        exploit sim_regs_cons_eval_expr; eauto.
+        rewrite Heq. ii. inv x0. congr.
+      + econs; ss. rewrite <- List.map_app. ss.
+    - esplits; [econs 3|..]; ss.
+      + des_ifs.
+        exploit sim_regs_cons_eval_expr; eauto.
+        rewrite Heq. ii. inv x0. congr.
+      + econs; ss. rewrite <- List.map_app. ss.
+  Qed.
+
+  Lemma sim_state_cons_read
+        val_ps
+        n st1_ps st1_arm e_arm st2_arm
+        loc_arm val_arm ord_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm)
+        (VAL: sim_val_cons n val_ps val_arm):
+    exists loc_ps ord_ps st2_ps,
+      (<<STEP_PS: State.step (ProgramEvent.read loc_ps val_ps ord_ps) st1_ps st2_ps>>) /\
+      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
+      (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; [econs 1; econs 3|..]; eauto.
+    econs; ss.
+    apply sim_regs_cons_add; ss.
+  Qed.
+
+  Lemma sim_state_cons_write
+        n st1_ps st1_arm e_arm st2_arm
+        loc_arm val_arm ord_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.write ord_arm loc_arm val_arm):
+    exists loc_ps val_ps ord_ps st2_ps,
+      (<<STEP_PS: State.step (ProgramEvent.write loc_ps val_ps ord_ps) st1_ps st2_ps>>) /\
+      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
+      (<<VAL: sim_val_cons n val_ps val_arm>>) /\
+      (<<ORD: ord_arm = ps_to_rmw_ordw ord_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; [econs 1; econs 4|..]; eauto.
+    - apply sim_regs_cons_eval_expr; ss.
+    - econs; ss.
+  Qed.
+
+  Lemma sim_state_cons_fadd
+        vold_ps
+        n st1_ps st1_arm e_arm st2_arm
+        ordr_arm ordw_arm loc_arm vold_arm vnew_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm)
+        (VOLD: sim_val_cons n vold_ps vold_arm):
+    exists loc_ps vnew_ps ordr_ps ordw_ps st2_ps,
+      (<<STEP_PS: State.step (ProgramEvent.update loc_ps vold_ps vnew_ps ordr_ps ordw_ps) st1_ps st2_ps>>) /\
+      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
+      (<<VNEW: sim_val_cons n vnew_ps vnew_arm>>) /\
+      (<<ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps>>) /\
+      (<<ORDW: ordw_arm = ps_to_rmw_ordw ordw_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; [econs 1; econs 5|..]; eauto.
+    - ii. ss.
+      exploit VOLD.
+      { etrans; eauto. apply join_l. }
+      i. inv x0.
+      exploit sim_regs_cons_eval_expr; try exact REGS.
+      { etrans; [|exact H]. apply join_r. }
+      i. inv x0. ss.
+    - econs; ss.
+      apply sim_regs_cons_add; ss.
+  Qed.
+
+  Lemma sim_state_cons_dmb
+        n st1_ps st1_arm e_arm st2_arm
+        rr rw wr ww
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.dmb rr rw wr ww):
+    exists ordr_ps ordw_ps st2_ps,
+      (<<STEP_PS: State.step (ProgramEvent.fence ordr_ps ordw_ps) st1_ps st2_ps>>) /\
+      (<<RR: rr = Ordering.le Ordering.acqrel ordr_ps || Ordering.le Ordering.seqcst ordw_ps>>) /\
+      (<<RW: rw = Ordering.le Ordering.acqrel ordr_ps || Ordering.le Ordering.acqrel ordw_ps>>) /\
+      (<<WR: wr = Ordering.le Ordering.seqcst ordw_ps>>) /\
+      (<<WW: ww = Ordering.le Ordering.acqrel ordw_ps>>) /\
+      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; [econs 1; econs 6|..]; eauto.
+    econs; ss.
+  Qed.
+
   (* Lemma sim_thread_cons_step *)
   (*       tid n th1_ps eu1 eu2 *)
   (*       (SIM1: sim_thread_cons tid n th1_ps eu1) *)
