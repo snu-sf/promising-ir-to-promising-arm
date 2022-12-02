@@ -41,6 +41,7 @@ Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWThread.
 
 Set Implicit Arguments.
+Set Nested Proofs Allowed.
 
 
 Module PStoRMWConsistent.
@@ -360,7 +361,7 @@ Module PStoRMWConsistent.
         (WF1_ARM: RMWLocal.wf tid lc1_arm mem_arm)
         (ORD: ord_arm = ps_to_rmw_ordr ord)
         (LOC: vloc.(ValA.val) = Zpos loc)
-        (VRO: le lc2_arm.(Local.vro).(View.ts) n)
+        (READ_VIEW: le (FwdItem.read_view (Local.fwdbank lc1_arm vloc.(ValA.val)) ts ord_arm).(View.ts) n)
         (STEP: Local.read ex ord_arm vloc res ts lc1_arm mem_arm lc2_arm):
     (<<PROMISED_ARM: Promises.lookup ts (Local.promises lc1_arm)>>) \/
     (exists val released lc2_ps,
@@ -376,9 +377,7 @@ Module PStoRMWConsistent.
   Proof.
     exploit (Local.read_incr (A:=unit)); eauto. i.
     inv STEP.
-    exploit sim_memory_cons_read; eauto; try apply GL_WF1_PS.
-    { ss. etrans; try exact VRO. ets. }
-    i. des; auto.
+    exploit sim_memory_cons_read; eauto; try apply GL_WF1_PS. i. des; auto.
     { (* race with a promise *)
       ss. right. right.
       esplits; eauto.
@@ -1408,19 +1407,15 @@ Module PStoRMWConsistent.
       + econs; ss. rewrite <- List.map_app. ss.
   Qed.
 
-  Lemma sim_state_cons_read
-        val_ps
+  Lemma sim_state_cons_read_aux
         n st1_ps st1_arm e_arm st2_arm
         loc_arm val_arm ord_arm
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
-        (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm)
-        (VAL: sim_val_cons n val_ps val_arm):
-    exists loc_ps ord_ps st2_ps,
-      (<<STEP_PS: State.step (ProgramEvent.read loc_ps val_ps ord_ps) st1_ps st2_ps>>) /\
+        (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm):
+    exists loc_ps ord_ps,
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
-      (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>) /\
-      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+      (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>).
   Proof.
     destruct st1_ps as [regs1_ps stmts1_ps].
     destruct st1_arm as [stmts1_arm regs1_arm].
@@ -1429,6 +1424,31 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
+    esplits; eauto. ss.
+  Qed.
+
+  Lemma sim_state_cons_read
+        n st1_ps st1_arm e_arm st2_arm
+        loc_arm val_arm ord_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm):
+    exists loc_ps ord_ps,
+      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
+      (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>) /\
+      forall val_ps (VAL: sim_val_cons n val_ps val_arm),
+      exists st2_ps,
+        (<<STEP_PS: State.step (ProgramEvent.read loc_ps val_ps ord_ps) st1_ps st2_ps>>) /\
+        (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; ss. i.
     esplits; [econs 1; econs 3|..]; eauto.
     econs; ss.
     apply sim_regs_cons_add; ss.
@@ -1460,20 +1480,20 @@ Module PStoRMWConsistent.
   Qed.
 
   Lemma sim_state_cons_fadd
-        vold_ps
         n st1_ps st1_arm e_arm st2_arm
         ordr_arm ordw_arm loc_arm vold_arm vnew_arm
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
-        (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm)
-        (VOLD: sim_val_cons n vold_ps vold_arm):
-    exists loc_ps vnew_ps ordr_ps ordw_ps st2_ps,
-      (<<STEP_PS: State.step (ProgramEvent.update loc_ps vold_ps vnew_ps ordr_ps ordw_ps) st1_ps st2_ps>>) /\
+        (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm):
+    exists loc_ps ordr_ps ordw_ps,
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
-      (<<VNEW: sim_val_cons n vnew_ps vnew_arm>>) /\
       (<<ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps>>) /\
       (<<ORDW: ordw_arm = ps_to_rmw_ordw ordw_ps>>) /\
-      (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
+      forall vold_ps (VOLD: sim_val_cons n vold_ps vold_arm),
+      exists vnew_ps st2_ps,
+        (<<STEP_PS: State.step (ProgramEvent.update loc_ps vold_ps vnew_ps ordr_ps ordw_ps) st1_ps st2_ps>>) /\
+        (<<VNEW: sim_val_cons n vnew_ps vnew_arm>>) /\
+        (<<SIM2: sim_state_cons n st2_ps st2_arm>>).
   Proof.
     destruct st1_ps as [regs1_ps stmts1_ps].
     destruct st1_arm as [stmts1_arm regs1_arm].
@@ -1482,6 +1502,7 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
+    esplits; ss. i.
     esplits; [econs 1; econs 5|..]; eauto.
     - ii. ss.
       exploit VOLD.
@@ -1519,234 +1540,283 @@ Module PStoRMWConsistent.
     econs; ss.
   Qed.
 
-  (* Lemma sim_thread_cons_step *)
-  (*       tid n th1_ps eu1 eu2 *)
-  (*       (SIM1: sim_thread_cons tid n th1_ps eu1) *)
-  (*       (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)) *)
-  (*       (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps)) *)
-  (*       (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps)) *)
-  (*       (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem)) *)
-  (*       (STEP_ARM: RMWExecUnit.state_step_dmbsy_exact (Some n) n tid eu1 eu2) *)
-  (*       (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)): *)
-  (*   exists th2_ps, *)
-  (*     (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\ *)
-  (*     ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\ *)
-  (*      (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/ *)
-  (*      exists e_ps th3_ps, *)
-  (*        (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\ *)
-  (*        (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)). *)
-  (* Proof. *)
-  (*   destruct th1_ps as [st1_ps lc1_ps gl1_ps]. *)
-  (*   destruct eu1 as [st1_arm lc1_arm mem1_arm]. *)
-  (*   destruct eu2 as [st2_arm lc2_arm mem2_arm]. *)
-  (*   inv SIM1. inv STEP_ARM. inv STEP. ss. subst. *)
-  (*   exploit sim_state_step; eauto. i. des. *)
-  (*   inv LOCAL; inv EVENT. *)
-  (*   { (* internal *) *)
-  (*     esplits. *)
-  (*     - econs 2; try refl. *)
-  (*       econs 1; [econs 2; [|econs 1]|]; eauto. *)
-  (*     - left. ss. *)
-  (*   } *)
+  Lemma sim_thread_cons_step
+        tid n th1_ps eu1 eu2
+        (SIM1: sim_thread_cons tid n th1_ps eu1)
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
+        (STEP_ARM: RMWExecUnit.state_step_dmbsy_exact (Some n) n tid eu1 eu2)
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
+        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)):
+    exists th2_ps,
+      (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+      ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\
+       (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
+       exists e_ps th3_ps,
+         (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+         (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
+  Proof.
+    destruct th1_ps as [st1_ps lc1_ps gl1_ps].
+    destruct eu1 as [st1_arm lc1_arm mem1_arm].
+    destruct eu2 as [st2_arm lc2_arm mem2_arm].
+    inv SIM1. inv STEP_ARM. inv STEP. ss. subst.
+    inv LOCAL.
+    { (* internal *)
+      exploit sim_state_cons_internal; eauto. i. des.
+      esplits.
+      - econs 2; try refl.
+        econs 1; [econs 2; [|econs 1]|]; eauto.
+      - left. ss.
+    }
 
-  (*   { (* read *) *)
-  (*     exploit sim_read; try exact STEP; eauto. *)
-  (*     i. des. *)
-  (*     - exfalso. *)
-  (*       exploit (FULFILLABLE ts); try by (inv STEP; ss). i. des. *)
-  (*       dup WF1_ARM. inv WF1_ARM0. *)
-  (*       exploit PRM; eauto. i. des. *)
-  (*       clear COH VRN VWN FWD PRM. *)
-  (*       exploit LT_COH; eauto. i. *)
-  (*       exploit read_ts_coh; eauto. i. *)
-  (*       clear - STEP GET x0 x1. *)
-  (*       inv STEP. ss. *)
-  (*       unfold Memory.get_msg in *. destruct ts; ss. *)
-  (*       revert MSG. unfold Memory.read. ss. *)
-  (*       rewrite GET. condtac; ss. i. *)
-  (*       rewrite e in *. *)
-  (*       eapply Nat.lt_strorder. *)
-  (*       eapply Nat.lt_le_trans; [exact x0|]. apply x1. *)
-  (*     - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst. *)
-  (*       esplits. *)
-  (*       + econs 2; try refl. *)
-  (*         econs 1; [econs 2; [|econs 2]|]; eauto. *)
-  (*       + left. ss. *)
-  (*     - exploit sim_val_eq_inv; [exact VAL|exact VAL0|]. i. subst. *)
-  (*       esplits. *)
-  (*       + econs 2; try refl. *)
-  (*         econs 1; [econs 2; [|econs 8]|]; eauto. *)
-  (*       + left. ss. *)
-  (*   } *)
+    { (* read *)
+      exploit sim_state_cons_read; eauto. i. des. subst.
+      destruct (le_lt_dec
+                  (FwdItem.read_view (Local.fwdbank lc1_arm vloc.(ValA.val)) ts (ps_to_rmw_ordr ord_ps)).(View.ts) n);
+         rename l into READ_VIEW.
+      { (* read view <= n *)
+        exploit sim_cons_read; try exact STEP; eauto.
+        { apply LOC.
+          inv FULFILLABLE_TS.
+          etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+          inv STEP. ss. apply join_r.
+        }
+        i. des.
+        - exfalso.
+          exploit (FULFILLABLE ts); try by (inv STEP; ss). i. des.
+          dup WF1_ARM. inv WF1_ARM0.
+          exploit PRM; eauto. i. des.
+          clear COH VRN VWN FWD PRM.
+          exploit LT_COH; eauto. i.
+          exploit read_ts_coh; eauto. i.
+          clear - STEP GET x1 x2.
+          inv STEP. ss.
+          unfold Memory.get_msg in *. destruct ts; ss.
+          revert MSG. unfold Memory.read. ss.
+          rewrite GET. condtac; ss. i.
+          rewrite e in *.
+          eapply Nat.lt_strorder.
+          eapply Nat.lt_le_trans; [exact x1|]. apply x2.
+        - exploit x0; eauto. i. des.
+          esplits.
+          + econs 2; try refl.
+            econs 1; [econs 2; [|econs 2]|]; eauto.
+          + left. ss.
+        - exploit x0; ii; eauto. i. des.
+          esplits.
+          + econs 2; try refl.
+            econs 1; [econs 2; [|econs 8]|]; eauto.
+          + left. ss.
+      }
 
-  (*   { (* fulfill *) *)
-  (*     exploit sim_fulfill; try exact STEP; eauto; ss. *)
-  (*     { Transparent Ordering.le. *)
-  (*       i. apply PF in H. destruct ord_ps; ss. *)
-  (*     } *)
-  (*     { i. apply PSTime.bot_spec. } *)
-  (*     i. des. inv VAL. *)
-  (*     esplits. *)
-  (*     - econs 2. *)
-  (*       { econs 1; [econs 1; econs 3|]; eauto. } *)
-  (*       econs 2; try refl. *)
-  (*       econs 1; [econs 2; [|econs 3]|]; eauto. *)
-  (*     - left. splits; ss. i. *)
-  (*       inv CANCEL_PS. inv STEP_PS0. ss. *)
-  (*   } *)
+      { (* read view > n *)
+        exploit sim_cons_read_cur; try exact STEP; eauto.
+        { apply LOC.
+          inv FULFILLABLE_TS.
+          etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+          inv STEP. ss. apply join_r.
+        }
+        i. des.
+        exploit (x0 val).
+        { ii. exfalso.
+          inv STEP. ss. move READ_VIEW at bottom.
+          cut (n < n); try nia.
+          eapply Nat.lt_le_trans; [exact READ_VIEW|].
+          etrans; try exact H.
+          apply join_r.
+        }
+        i. des.
+        esplits.
+        - econs 2; try refl.
+          econs 1; [econs 2; [|econs 2]|]; eauto.
+        - left. ss.
+      }
+    }
 
-  (*   { (* fadd *) *)
-  (*     exploit update_ts; eauto. intro TS. *)
-  (*     exploit sim_read; try exact STEP_READ; eauto. *)
-  (*     { exploit (Local.control_incr (A:=unit)); eauto. i. *)
-  (*       exploit (Local.fulfill_incr (A:=unit)); eauto. i. *)
-  (*       etrans; [apply x1|]. etrans; [apply x0|]. ss. *)
-  (*     } *)
-  (*     i. des. *)
-  (*     { (* read message is a promise *) *)
-  (*       exfalso. *)
-  (*       exploit (FULFILLABLE ts_old). *)
-  (*       { inv STEP_CONTROL; ss. *)
-  (*         inv STEP_FULFILL; ss. *)
-  (*         rewrite Promises.unset_o. *)
-  (*         condtac; try by (inv STEP_READ; ss); ss. *)
-  (*         r in e. subst. nia. *)
-  (*       } *)
-  (*       i. des. *)
-  (*       dup WF1_ARM. inv WF1_ARM0. *)
-  (*       exploit PRM; eauto. i. des. *)
-  (*       clear COH VRN VWN FWD PRM. *)
-  (*       exploit LT_COH; eauto. i. *)
-  (*       eapply Nat.lt_strorder. *)
-  (*       etrans; try exact x0. *)
-  (*       eapply Nat.lt_le_trans; try exact TS. *)
-  (*       exploit (Local.control_incr (A:=unit)); eauto. i. *)
-  (*       etrans; [|apply x1]. *)
-  (*       replace (Msg.loc msg) with (ValA.val vloc); cycle 1. *)
-  (*       { clear - STEP_READ GET. *)
-  (*         inv STEP_READ. ss. *)
-  (*         revert GET. unfold Memory.get_msg. destruct ts_old; ss. i. *)
-  (*         revert MSG. unfold Memory.read. s. rewrite GET. condtac; ss. *)
-  (*       } *)
-  (*       clear - STEP_FULFILL. *)
-  (*       inv STEP_FULFILL. ss. *)
-  (*       unfold fun_add. condtac; ss. congr. *)
-  (*     } *)
+    { (* fulfill *)
+      exploit sim_state_cons_write; eauto. i. des.
+      exploit sim_cons_fulfill; try exact STEP; eauto; ss.
+      { Transparent Ordering.le.
+        i. subst. apply PF in H. destruct ord_ps; ss.
+      }
+      { apply LOC.
+        inv FULFILLABLE_TS.
+        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+        inv STEP. ss. apply join_r.
+      }
+      { i. apply PSTime.bot_spec. }
+      i. des.
+      esplits.
+      - econs 2.
+        { econs 1; [econs 1; econs 3|]; eauto. }
+        econs 2; try refl.
+        econs 1; [econs 2; [|econs 3]|]; eauto.
+      - left. splits; ss. i.
+        inv CANCEL_PS. inv STEP_PS0. ss.
+    }
 
-  (*     { (* normal read *) *)
-  (*       exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des. *)
-  (*       exploit (RMWLocal.read_wf (A:=unit)); eauto. i. *)
-  (*       exploit sim_fulfill; try exact STEP_FULFILL; eauto; ss. *)
-  (*       { Transparent Ordering.le. *)
-  (*         i. apply PF in H. destruct ordw_ps; ss. *)
-  (*       } *)
-  (*       { clear - LOC SIM_TVIEW SIM_MEM LC_WF1_PS STEP_READ STEP_PS0 TVIEW2 MEM2. *)
-  (*         i. inv STEP_READ. ss. *)
-  (*         unfold FwdItem.read_view. condtac; s. *)
-  (*         - apply andb_prop in X. des. *)
-  (*           revert X. unfold proj_sumbool. condtac; ss. r in e. i. clear X0 X X1. *)
-  (*           inv SIM_MEM. clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED. *)
-  (*           exploit (FWD (Zpos loc_ps)); eauto. i. des. inv LOC0. *)
-  (*           rewrite LOC in *. *)
-  (*           inv STEP_PS0. rewrite GET_PS in *. inv GET. *)
-  (*           revert REL_FWD. condtac; i. *)
-  (*           + etrans; try apply REL_FWD. apply le_ntt. s. *)
-  (*             eapply join_le; [apply Time.order|..]. *)
-  (*             * eapply join_le; [apply Time.order|..]; ets. *)
-  (*             * unfold fun_add. condtac; ss. rewrite e. ets. *)
-  (*           + etrans; try apply REL_FWD. *)
-  (*             etrans; [apply LC_WF1_PS|]. *)
-  (*             etrans; [apply LC_WF1_PS|]. *)
-  (*             etrans; [apply SIM_TVIEW|]. *)
-  (*             apply le_ntt. s. *)
-  (*             eapply join_le; [apply Time.order|..]. *)
-  (*             * eapply join_le; [apply Time.order|..]; ets. *)
-  (*             * unfold fun_add. condtac; ss. rewrite e. ets. *)
-  (*         - inv STEP_PS0. ss. *)
-  (*           inv MEM2. exploit RELEASED; eauto. i. *)
-  (*           etrans; eauto. apply le_ntt. ets. *)
-  (*       } *)
-  (*       { i. inv STEP_PS0. ss. *)
-  (*         inv SIM_MEM. exploit RELEASED; eauto. *)
-  (*         etrans; try apply x1. econs. *)
-  (*         apply lt_ntt. ss. *)
-  (*       } *)
-  (*       i. des. *)
-  (*       exploit reorder_read_cancel; eauto. i. des. *)
-  (*       exploit sim_val_eq_inv; [exact VAL|exact VOLD|]. i. subst. *)
-  (*       exploit (@sim_memory_exclusive ts_old ts_new); try exact SIM_MEM. *)
-  (*       { clear - WF1_ARM STEP_READ STEP_FULFILL. *)
-  (*         eapply le_lt_trans; cycle 1. *)
-  (*         { inv STEP_FULFILL. inv WRITABLE. apply COH. } *)
-  (*         clear STEP_FULFILL. inv STEP_READ. ss. *)
-  (*         unfold FwdItem.read_view. condtac. *)
-  (*         - apply andb_prop in X. des. *)
-  (*           revert X. unfold proj_sumbool. condtac; ss. *)
-  (*           r in e. i. clear X X0 X1. subst. *)
-  (*           inv WF1_ARM. etrans; try apply FWD. *)
-  (*           unfold fun_add. condtac; try congr. s. *)
-  (*           apply join_l. *)
-  (*         - unfold fun_add. condtac; ss; try congr. ets. *)
-  (*       } *)
-  (*       { instantiate (1:=vold.(ValA.val)). *)
-  (*         instantiate (1:=vloc.(ValA.val)). *)
-  (*         inv STEP_READ. ss. *)
-  (*       } *)
-  (*       { instantiate (1:=Msg.mk vloc.(ValA.val) vnew.(ValA.val) tid). *)
-  (*         inv STEP_FULFILL. ss. *)
-  (*       } *)
-  (*       { hexploit update_ex_strong; try exact STEP_READ; try exact STEP_FULFILL; ss. *)
-  (*         eapply RMWLocal.control_fulfillable; eauto. *)
-  (*       } *)
-  (*       { ss. } *)
-  (*       { eauto. } *)
-  (*       { instantiate (1:=from). *)
-  (*         inv CANCEL_PS. inv CANCEL. *)
-  (*         exploit PSMemory.remove_get0; try exact MEM. i. des. ss. *)
-  (*       } *)
-  (*       i. subst. esplits. *)
-  (*       + econs 2. *)
-  (*         { econs; [econs 1; econs 3|]; eauto. } *)
-  (*         econs 2; try refl. *)
-  (*         econs; [econs 2; [|econs 4]|]; eauto. *)
-  (*         inv VNEW. eauto. *)
-  (*       + left. splits. *)
-  (*         * econs; ss. *)
-  (*           { exploit (Local.control_incr (A:=unit)); eauto. i. *)
-  (*             eapply sim_tview_le; eauto. *)
-  (*             inv STEP_CONTROL. ss. apply TVIEW0. *)
-  (*           } *)
-  (*           { inv STEP_CONTROL. inv MEM0. econs; ss. } *)
-  (*         * i. inv STEP_PS0. inv CANCEL_PS. inv STEP_PS1. ss. *)
-  (*     } *)
+    (* { (* fadd *) *)
+    (*   exploit update_ts; eauto. intro TS. *)
+    (*   exploit sim_read; try exact STEP_READ; eauto. *)
+    (*   { exploit (Local.control_incr (A:=unit)); eauto. i. *)
+    (*     exploit (Local.fulfill_incr (A:=unit)); eauto. i. *)
+    (*     etrans; [apply x1|]. etrans; [apply x0|]. ss. *)
+    (*   } *)
+    (*   i. des. *)
+    (*   { (* read message is a promise *) *)
+    (*     exfalso. *)
+    (*     exploit (FULFILLABLE ts_old). *)
+    (*     { inv STEP_CONTROL; ss. *)
+    (*       inv STEP_FULFILL; ss. *)
+    (*       rewrite Promises.unset_o. *)
+    (*       condtac; try by (inv STEP_READ; ss); ss. *)
+    (*       r in e. subst. nia. *)
+    (*     } *)
+    (*     i. des. *)
+    (*     dup WF1_ARM. inv WF1_ARM0. *)
+    (*     exploit PRM; eauto. i. des. *)
+    (*     clear COH VRN VWN FWD PRM. *)
+    (*     exploit LT_COH; eauto. i. *)
+    (*     eapply Nat.lt_strorder. *)
+    (*     etrans; try exact x0. *)
+    (*     eapply Nat.lt_le_trans; try exact TS. *)
+    (*     exploit (Local.control_incr (A:=unit)); eauto. i. *)
+    (*     etrans; [|apply x1]. *)
+    (*     replace (Msg.loc msg) with (ValA.val vloc); cycle 1. *)
+    (*     { clear - STEP_READ GET. *)
+    (*       inv STEP_READ. ss. *)
+    (*       revert GET. unfold Memory.get_msg. destruct ts_old; ss. i. *)
+    (*       revert MSG. unfold Memory.read. s. rewrite GET. condtac; ss. *)
+    (*     } *)
+    (*     clear - STEP_FULFILL. *)
+    (*     inv STEP_FULFILL. ss. *)
+    (*     unfold fun_add. condtac; ss. congr. *)
+    (*   } *)
 
-  (*     { (* racy read *) *)
-  (*       inv STEP_PS0. esplits; try refl. *)
-  (*       right. esplits. *)
-  (*       - econs 2; [|econs 10]; eauto. *)
-  (*       - ss. *)
-  (*     } *)
-  (*   } *)
+    (*   { (* normal read *) *)
+    (*     exploit PSLocal.read_step_future; try exact STEP_PS0; eauto. i. des. *)
+    (*     exploit (RMWLocal.read_wf (A:=unit)); eauto. i. *)
+    (*     exploit sim_fulfill; try exact STEP_FULFILL; eauto; ss. *)
+    (*     { Transparent Ordering.le. *)
+    (*       i. apply PF in H. destruct ordw_ps; ss. *)
+    (*     } *)
+    (*     { clear - LOC SIM_TVIEW SIM_MEM LC_WF1_PS STEP_READ STEP_PS0 TVIEW2 MEM2. *)
+    (*       i. inv STEP_READ. ss. *)
+    (*       unfold FwdItem.read_view. condtac; s. *)
+    (*       - apply andb_prop in X. des. *)
+    (*         revert X. unfold proj_sumbool. condtac; ss. r in e. i. clear X0 X X1. *)
+    (*         inv SIM_MEM. clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED. *)
+    (*         exploit (FWD (Zpos loc_ps)); eauto. i. des. inv LOC0. *)
+    (*         rewrite LOC in *. *)
+    (*         inv STEP_PS0. rewrite GET_PS in *. inv GET. *)
+    (*         revert REL_FWD. condtac; i. *)
+    (*         + etrans; try apply REL_FWD. apply le_ntt. s. *)
+    (*           eapply join_le; [apply Time.order|..]. *)
+    (*           * eapply join_le; [apply Time.order|..]; ets. *)
+    (*           * unfold fun_add. condtac; ss. rewrite e. ets. *)
+    (*         + etrans; try apply REL_FWD. *)
+    (*           etrans; [apply LC_WF1_PS|]. *)
+    (*           etrans; [apply LC_WF1_PS|]. *)
+    (*           etrans; [apply SIM_TVIEW|]. *)
+    (*           apply le_ntt. s. *)
+    (*           eapply join_le; [apply Time.order|..]. *)
+    (*           * eapply join_le; [apply Time.order|..]; ets. *)
+    (*           * unfold fun_add. condtac; ss. rewrite e. ets. *)
+    (*       - inv STEP_PS0. ss. *)
+    (*         inv MEM2. exploit RELEASED; eauto. i. *)
+    (*         etrans; eauto. apply le_ntt. ets. *)
+    (*     } *)
+    (*     { i. inv STEP_PS0. ss. *)
+    (*       inv SIM_MEM. exploit RELEASED; eauto. *)
+    (*       etrans; try apply x1. econs. *)
+    (*       apply lt_ntt. ss. *)
+    (*     } *)
+    (*     i. des. *)
+    (*     exploit reorder_read_cancel; eauto. i. des. *)
+    (*     exploit sim_val_eq_inv; [exact VAL|exact VOLD|]. i. subst. *)
+    (*     exploit (@sim_memory_exclusive ts_old ts_new); try exact SIM_MEM. *)
+    (*     { clear - WF1_ARM STEP_READ STEP_FULFILL. *)
+    (*       eapply le_lt_trans; cycle 1. *)
+    (*       { inv STEP_FULFILL. inv WRITABLE. apply COH. } *)
+    (*       clear STEP_FULFILL. inv STEP_READ. ss. *)
+    (*       unfold FwdItem.read_view. condtac. *)
+    (*       - apply andb_prop in X. des. *)
+    (*         revert X. unfold proj_sumbool. condtac; ss. *)
+    (*         r in e. i. clear X X0 X1. subst. *)
+    (*         inv WF1_ARM. etrans; try apply FWD. *)
+    (*         unfold fun_add. condtac; try congr. s. *)
+    (*         apply join_l. *)
+    (*       - unfold fun_add. condtac; ss; try congr. ets. *)
+    (*     } *)
+    (*     { instantiate (1:=vold.(ValA.val)). *)
+    (*       instantiate (1:=vloc.(ValA.val)). *)
+    (*       inv STEP_READ. ss. *)
+    (*     } *)
+    (*     { instantiate (1:=Msg.mk vloc.(ValA.val) vnew.(ValA.val) tid). *)
+    (*       inv STEP_FULFILL. ss. *)
+    (*     } *)
+    (*     { hexploit update_ex_strong; try exact STEP_READ; try exact STEP_FULFILL; ss. *)
+    (*       eapply RMWLocal.control_fulfillable; eauto. *)
+    (*     } *)
+    (*     { ss. } *)
+    (*     { eauto. } *)
+    (*     { instantiate (1:=from). *)
+    (*       inv CANCEL_PS. inv CANCEL. *)
+    (*       exploit PSMemory.remove_get0; try exact MEM. i. des. ss. *)
+    (*     } *)
+    (*     i. subst. esplits. *)
+    (*     + econs 2. *)
+    (*       { econs; [econs 1; econs 3|]; eauto. } *)
+    (*       econs 2; try refl. *)
+    (*       econs; [econs 2; [|econs 4]|]; eauto. *)
+    (*       inv VNEW. eauto. *)
+    (*     + left. splits. *)
+    (*       * econs; ss. *)
+    (*         { exploit (Local.control_incr (A:=unit)); eauto. i. *)
+    (*           eapply sim_tview_le; eauto. *)
+    (*           inv STEP_CONTROL. ss. apply TVIEW0. *)
+    (*         } *)
+    (*         { inv STEP_CONTROL. inv MEM0. econs; ss. } *)
+    (*       * i. inv STEP_PS0. inv CANCEL_PS. inv STEP_PS1. ss. *)
+    (*   } *)
 
-  (*   { (* dmb *) *)
-  (*     exploit sim_dmb; try exact STEP; eauto. *)
-  (*     { i. apply DMBSY. rewrite H. *)
-  (*       destruct ordr_ps, ordw_ps; ss. *)
-  (*     } *)
-  (*     i. des. esplits. *)
-  (*     - econs 2; try refl. *)
-  (*       econs; [econs 2; [|econs 5]|]; eauto. *)
-  (*     - left. ss. *)
-  (*   } *)
+    (*   { (* racy read *) *)
+    (*     inv STEP_PS0. esplits; try refl. *)
+    (*     right. esplits. *)
+    (*     - econs 2; [|econs 10]; eauto. *)
+    (*     - ss. *)
+    (*   } *)
+    (* } *)
 
-  (*   { (* control *) *)
-  (*     exploit sim_control; try exact LC; eauto. i. des. *)
-  (*     esplits. *)
-  (*     - econs 2; try refl. *)
-  (*       econs; [econs 2; [|econs 1]|]; eauto. *)
-  (*     - left. ss. *)
-  (*   } *)
-  (* Qed. *)
+    { admit. }
+
+    { (* dmb *)
+      exploit sim_state_cons_dmb; eauto. i. des.
+      exploit sim_cons_dmb; try exact STEP; eauto.
+      { i. apply DMBSY.
+        destruct ordr_ps, ordw_ps; subst; ss.
+      }
+      i. des. esplits.
+      - econs 2; try refl.
+        econs; [econs 2; [|econs 5]|]; eauto.
+      - left. ss.
+    }
+
+    { (* control *)
+      exploit sim_state_cons_control; eauto.
+      { inv FULFILLABLE_TS.
+        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+        inv LC. ss. apply join_r.
+      }
+      exploit sim_cons_control; try exact LC; eauto. i. des.
+      esplits.
+      - econs 2; try refl.
+        econs; [econs 2; [|econs 1]|]; eauto.
+      - left. ss.
+    }
+  Admitted.
 
   Lemma sim_thread_exec_consistent
         tid n after_sc th1_ps eu
