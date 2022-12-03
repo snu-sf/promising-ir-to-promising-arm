@@ -108,8 +108,7 @@ Module PStoRMWConsistent.
         (MEM_COMPLETE: forall loc_ps from to msg_ps
                               (TO: PSTime.lt PSTime.bot to)
                               (GET_PS: PSMemory.get loc_ps to mem_ps = Some (from, msg_ps)),
-          (exists fts tts,
-              (<<FROM: from = ntt fts>>) /\
+          (exists tts,
               (<<TO: to = ntt tts>>) /\
               (<<MSG_PS: msg_ps = Message.reserve>>) /\
               (<<OUT: forall ts msg_arm
@@ -1549,7 +1548,7 @@ Module PStoRMWConsistent.
         (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
         (STEP_ARM: RMWExecUnit.state_step_dmbsy_exact (Some n) n tid eu1 eu2)
         (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
-        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem)):
+        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
       ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\
@@ -1590,7 +1589,7 @@ Module PStoRMWConsistent.
           exploit PRM; eauto. i. des.
           clear COH VRN VWN FWD PRM.
           exploit LT_COH; eauto. i.
-          exploit read_ts_coh; eauto. i.
+          exploit (read_ts_coh (A:=unit)); eauto. i.
           clear - STEP GET x1 x2.
           inv STEP. ss.
           unfold Memory.get_msg in *. destruct ts; ss.
@@ -1663,7 +1662,7 @@ Module PStoRMWConsistent.
         ets.
       }
       clear LOC. intro LOC.
-      exploit update_ts; eauto. intro TS.
+      exploit (update_ts (A:=unit)); eauto. intro TS.
       destruct (le_lt_dec
                   (FwdItem.read_view (Local.fwdbank lc1_arm vloc.(ValA.val)) ts_old (ps_to_rmw_ordr ordr_ps)).(View.ts) n);
         rename l into READ_VIEW.
@@ -1832,6 +1831,143 @@ Module PStoRMWConsistent.
     }
   Qed.
 
+  Lemma sim_thread_cons_rtc_step
+        tid n th1_ps eu1 eu2
+        (SIM1: sim_thread_cons tid n th1_ps eu1)
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
+        (STEPS_ARM: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu2)
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
+        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local)):
+    exists th2_ps,
+      (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+      ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\
+       (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
+       exists e_ps th3_ps,
+         (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+         (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
+  Proof.
+    revert th1_ps SIM1 SC1 LC_WF1_PS GL_WF1_PS.
+    induction STEPS_ARM; i.
+    { esplits; eauto. }
+    hexploit (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); try exact FULFILLABLE;
+      try eapply rtc_mon; try exact STEPS_ARM; i.
+    { inv H0. econs. eauto. }
+    exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
+      try eapply rtc_mon; try exact STEPS_ARM; i.
+    { inv H1. econs. eauto. }
+    exploit sim_thread_cons_step; eauto.
+    { eapply RMWLocal.fulfillable_ts_le; eauto. apply x1. }
+    i. des; cycle 1.
+    { esplits; eauto. }
+    exploit PSThread.rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
+    exploit (RMWExecUnit.state_step_rmw_wf (A:=unit)); i.
+    { inv H. econs. eauto. }
+    { ss. }
+    exploit IHSTEPS_ARM; eauto. i. des.
+    - esplits; [|eauto]. etrans; eauto.
+    - esplits; [|eauto]. etrans; eauto.
+  Qed.
+
+  Lemma sim_thread_sim_thread_cons
+        tid n th_ps eu
+        (SIM: sim_thread tid n th_ps eu):
+    sim_thread_cons tid n th_ps eu.
+  Proof.
+    inv SIM. econs; ss.
+    - inv SIM_STATE. econs; ss. ii. auto.
+    - inv SIM_MEM. econs; eauto; i.
+      exploit MEM_SOUND; eauto. i. des.
+      esplits; eauto. clear x1.
+      unguard. des.
+      + left. splits; ss.
+      + right. esplits; eauto.
+  Qed.
+
+  Lemma sim_thread_cap_sim_thread_cons
+        tid n th_ps eu
+        (INHABITED: PSMemory.inhabited th_ps.(PSThread.global).(Global.memory))
+        (SIM: sim_thread tid n th_ps eu):
+    sim_thread_cons tid n (PSThread.cap_of th_ps) eu.
+  Proof.
+    destruct th_ps as [st_ps lc_ps [sc gprm mem_ps]].
+    destruct eu as [st_arm lc_arm mem_arm].
+    inv SIM. econs; ss.
+    { inv SIM_STATE. econs; ss. ii. auto. }
+    clear - INHABITED SIM_MEM.
+    specialize (PSMemory.cap_of_cap mem_ps). intro CAP.
+    hexploit PSMemory.cap_le; eauto. intro CAP_LE.
+    inv SIM_MEM. econs; eauto; i.
+    { exploit MEM_SOUND; eauto. i. des.
+      exploit CAP_LE; eauto. i.
+      esplits; try exact x2; eauto.
+      clear x1. unguard. des.
+      - left. splits; ss.
+      - right. esplits; eauto.
+    }
+    { exploit PSMemory.cap_inv; eauto. i. des; eauto.
+      { subst. exfalso.
+        clear PRM_SOUND PRM_COMPLETE FWD RELEASED.
+        inv x1.
+        exploit MEM_COMPLETE; try exact GET2.
+        { eapply TimeFacts.le_lt_lt; try exact TS. apply Time.bot_spec. }
+        i. des. subst.
+        exploit MEM_SOUND; try exact GET_ARM. i. des. clear x1.
+        rewrite LOC0 in *. inv LOC.
+        rewrite GET_PS0 in *. inv GET2.
+        unguardH x3. des; subst.
+        { inv x2. }
+        exploit MEM_SOUND; try exact GET_FROM_ARM. s. i. des.
+        clear x3 x1. inv LOC.
+        exploit (EMPTY (ntt fts)); ss; try congr.
+      }
+      { subst. left.
+        exploit (@PSMemory.max_ts_spec loc_ps); try eapply INHABITED. i. des.
+        destruct (TimeFacts.le_lt_dec (PSMemory.max_ts loc_ps mem_ps) PSTime.bot).
+        { exploit TimeFacts.antisym; try exact l; try apply PSTime.bot_spec. i.
+          rewrite x1. exists 1. splits; ss. i.
+          ii. exploit MEM_SOUND; try exact GET_ARM. i. des.
+          rewrite LOC in *. inv H.
+          exploit PSMemory.max_ts_spec; try exact GET_PS0. i. des.
+          rewrite l in MAX0.
+          replace PSTime.bot with (ntt 0) in MAX0 by ss.
+          apply ntt_le in MAX0. unfold le in LE. nia.
+        }
+        exploit MEM_COMPLETE; try exact GET; ss. i. des.
+        exists (S ts). splits; ss.
+        - rewrite TO0. ss.
+        - ii. exploit MEM_SOUND; try exact GET_ARM0. i. des.
+          rewrite LOC0 in *. inv H.
+          exploit PSMemory.max_ts_spec; try exact GET_PS0. i. des.
+          rewrite TO0 in MAX0. apply ntt_le in MAX0.
+          unfold le in LE. nia.
+      }
+    }
+    { exploit FWD; eauto. i. des.
+      exploit CAP_LE; eauto. i.
+      esplits; eauto.
+    }
+    { exploit PSMemory.cap_inv; eauto. i. des; ss. eauto. }
+  Qed.
+
+  Lemma sim_thread_cons_no_promises
+        tid n th_ps eu
+        (SIM: sim_thread_cons tid n th_ps eu)
+        (PROMISES: forall ts
+                     (PROMISED: Promises.lookup ts eu.(RMWExecUnit.local).(Local.promises) = true),
+            ts > n):
+    th_ps.(PSThread.local).(PSLocal.promises) = BoolMap.bot.
+  Proof.
+    apply BoolMap.antisym; try apply BoolMap.bot_spec.
+    ii. exfalso.
+    inv SIM. inv SIM_MEM.
+    exploit PRM_COMPLETE; eauto. i. des.
+    exploit PROMISES; eauto. i.
+    unfold le in LE. nia.
+  Qed.
+
   Lemma sim_thread_exec_consistent
         tid n after_sc th1_ps eu
         (SIM1: sim_thread_exec tid n after_sc th1_ps eu)
@@ -1841,5 +1977,60 @@ Module PStoRMWConsistent.
         (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
     PSThread.consistent th1_ps.
   Proof.
-  Admitted.
+    inv SIM1.
+    exploit sim_thread_cap_sim_thread_cons; eauto; try apply GL_WF1_PS. intro SIM_CONS.
+    exploit PSThread.cap_wf; eauto. i. des.
+    exploit (certify_cases (A:=unit)); try exact STEPS2; auto. i. des.
+    { econs 2; try refl.
+      exploit sim_thread_cons_no_promises; eauto.
+    }
+    unguard. des.
+    exploit (fulfill_step_state_step0_pln (A:=unit)); eauto. i. des.
+    exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); try exact STEPS1; eauto. i.
+    exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit));
+      try eapply rtc_mon; try exact STEPS0;
+      try apply RMWExecUnit.dmbsy_over_state_step; eauto. i.
+    exploit (fulfill_step_fulfillable_ts (A:=unit)); eauto. intro FULFILLABLE_TS.
+    hexploit (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
+      try eapply rtc_mon; try exact STEPS3;
+      try apply RMWExecUnit.dmbsy_over_state_step.
+    { ii. rewrite PROMISES, Promises.lookup_bot in *. ss. }
+    intro FULFILLABLE.
+    assert (CERTIFY_STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1'').
+    { exploit rtc_n1; try exact STEPS0.
+      { econs; eauto. ss. }
+      i. clear - FULFILL_TS x2 FULFILLABLE_TS.
+      induction x2; i; try refl.
+      econs 2; [|apply IHx2; auto].
+      inv H. econs; eauto. i.
+      exploit DMBSY; eauto. i.
+      destruct (le_lt_dec (View.ts (join (Local.vro (RMWExecUnit.local x)) (Local.vwo (RMWExecUnit.local x)))) n).
+      { apply le_antisym; ss.
+        destruct after_sc; ss. unfold le in x1. nia.
+      }
+      exfalso. clear IHx2 l.
+      exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
+        try eapply rtc_mon; try exact x2;
+        try apply RMWExecUnit.dmbsy_over_state_step. i.
+      inv STEP. inv LOCAL; ss. destruct rr, rw, wr, ww; ss.
+      inv FULFILLABLE_TS.
+      cut (n < n); try nia.
+      eapply lt_le_trans; [|exact FULFILL_TS].
+      eapply le_lt_trans; [|exact LT_VWN].
+      etrans; [|apply x3].
+      clear - x1 STEP.
+      destruct y as []. s.
+      inv STEP; ss. subst. ss.
+      etrans; [etrans; [|exact x1]|].
+      - destruct after_sc; nia.
+      - apply join_spec; ets.
+    }
+    exploit sim_thread_cons_rtc_step; try exact SIM_CONS;
+      try eapply rtc_mon; try exact CERTIFY_STEPS; eauto.
+    { inv FULFILLABLE_TS. econs; eapply lt_le_trans; eauto. }
+    i. des.
+    - econs 2; try exact STEPS_PS.
+      eapply sim_thread_cons_no_promises; eauto.
+    - econs 1. econs; eauto.
+  Qed.
 End PStoRMWConsistent.

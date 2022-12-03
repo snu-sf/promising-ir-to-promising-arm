@@ -374,17 +374,17 @@ Section RMWLocal.
       unfold proj_sumbool in x0. des_ifs. congr.
   Qed.
 
-  Variant fulfillable_ts (ts: Time.t) (lc: Local.t (A:=A)) (mem: Memory.t): Prop :=
+  Variant fulfillable_ts (ts: Time.t) (lc: Local.t (A:=A)): Prop :=
     | fulfillable_ts_intro
         (LT_VWN: lt lc.(Local.vwn).(View.ts) ts)
         (LT_VCAP: lt lc.(Local.vcap).(View.ts) ts)
   .
 
   Lemma fulfillable_ts_le
-        ts lc1 lc2 mem
+        ts lc1 lc2
         (LC_LE: Local.le lc1 lc2)
-        (FULFILLABLE: fulfillable_ts ts lc2 mem):
-    fulfillable_ts ts lc1 mem.
+        (FULFILLABLE: fulfillable_ts ts lc2):
+    fulfillable_ts ts lc1.
   Proof.
     inv FULFILLABLE. econs.
     - eapply Nat.le_lt_trans; [|exact LT_VWN]. apply LC_LE.
