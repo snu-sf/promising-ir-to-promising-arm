@@ -586,6 +586,31 @@ Module PStoRMW.
       rewrite <- x0 in *.
       eapply sim_memory_S_already; eauto.
     }
+    assert (FULFILL_STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1').
+    { clear - STEPS0 FULFILL.
+      exploit (fulfill_step_vwn (A:=unit)); eauto. i. des.
+      clear - STEPS0 VWN1.
+      induction STEPS0; try refl.
+      econs 2; try apply IHSTEPS0; ss.
+      inv H. econs.
+      - eapply RMWExecUnit.state_step0_pf_mon; try exact STEP. nia.
+      - i. exploit DMBSY; eauto. i.
+        destruct e; ss. destruct rr, rw, wr, ww; ss.
+        cut (S n <= y.(RMWExecUnit.local).(Local.vwn).(View.ts)).
+        { i. exfalso.
+          exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
+            try eapply rtc_mon; try exact STEPS0;
+            try apply RMWExecUnit.dmbsy_over_state_step. i.
+          inv x2. inv LC. unfold le in *. nia.
+        }
+        clear - STEP x1.
+        inv STEP. inv LOCAL; ss. inv STEP. rewrite LC2. ss.
+        inv EVENT. ss.
+        etrans; [eauto|].
+        etrans; [|apply join_r].
+        eapply join_le; [apply Time.order|..]; ss.
+        apply join_l.
+    }
 
     destruct (OrdW.ge OrdW.pln ord) eqn:ORD.
     { (* pln *)
@@ -643,38 +668,77 @@ Module PStoRMW.
         }
 
         (* promised by another thread *)
-        admit.
+        clear x1 x0.
+        exploit sim_thread_sim_thread_cons; eauto. intro SIM_CONS.
+        exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); try exact STEPS1; eauto. i.
+        exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit));
+          try eapply rtc_mon; try exact STEPS0;
+          try apply RMWExecUnit.dmbsy_over_state_step; ss. i.
+        exploit (fulfill_step_vcap (A:=unit)); try exact FULFILL; ss. i. des.
+        hexploit (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
+          try eapply rtc_mon; try exact STEPS3;
+          try apply RMWExecUnit.dmbsy_over_state_step.
+        { ii. rewrite PROMISES in *. rewrite Promises.lookup_bot in *. ss. }
+        i. hexploit (fulfill_step_fulfillable (A:=unit)); eauto. intro FULFILLABLE.
+        exploit sim_thread_cons_rtc_step; try exact FULFILL_STEPS; eauto; try nia.
+        i. des; [|esplits; eauto].
+        esplits; try exact STEPS_PS. right.
+        exploit PSThread.rtc_tau_step_promises_minus; try exact STEPS_PS. i.
+        eapply equal_f in x2. revert x2.
+        unfold BoolMap.minus. rewrite PRM_PS, GPRM_PS. ss.
+        destruct (th2_ps.(PSThread.local).(PSLocal.promises) loc_ps) eqn:PRM_PS2,
+            (th2_ps.(PSThread.global).(Global.promises) loc_ps) eqn:GPRM_PS2; ss.
+        i. clear x2.
+        destruct th2_ps as [st2_ps lc2_ps gl2_ps]. ss.
+        inv SIM2. inv FULFILL.
+        - exploit sim_state_cons_write; eauto. i. des.
+          replace loc_ps0 with loc_ps in *; cycle 1.
+          { destruct eu1''. ss.
+            exploit LOC0.
+            { cut (vloc.(ValA.annot).(View.ts) <= View.ts (Local.vcap local)).
+              { i. etrans; [exact H0|]. nia. }
+              inv FULFILL0. ss. ets.
+            }
+            i. inv FULFILL0. ss.
+            exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
+              try eapply rtc_mon; try exact FULFILL_STEPS;
+              try apply RMWExecUnit.dmbsy_exact_state_step. i.
+            rewrite x3 in MSG. rewrite MSG in *.
+            destruct msg_arm. ss. clarify.
+            rewrite H2 in *. inv x2. ss.
+          }
+          esplits.
+          + econs 2; [|econs 9]; eauto.
+          + ss.
+        - exploit sim_state_cons_fadd_weak; eauto. i. des.
+          specialize (x3 vold.(ValA.val)). des. ss.
+          replace loc_ps0 with loc_ps in *; cycle 1.
+          { destruct eu1''. ss.
+            exploit LOC0.
+            { cut (vloc.(ValA.annot).(View.ts) <= View.ts (Local.vcap local)).
+              { i. etrans; [exact H0|]. nia. }
+              inv STEP_CONTROL. ss.
+              inv STEP_FULFILL. ss.
+              ets.
+            }
+            i. inv STEP_FULFILL. ss.
+            exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
+              try eapply rtc_mon; try exact FULFILL_STEPS;
+              try apply RMWExecUnit.dmbsy_exact_state_step. i.
+            rewrite x3 in MSG. rewrite MSG in *.
+            destruct msg_arm. ss. clarify.
+            rewrite H2 in *. inv x2. ss.
+          }
+          esplits.
+          + econs 2; [|econs 10]; eauto.
+          + ss.
       }
     }
 
     { (* >= strong *)
       assert (STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1'').
-      { clear - STEPS0 FULFILL ORD.
-        exploit (fulfill_step_state_step0 (A:=unit)); eauto. i. des.
-        exploit (fulfill_step_vwn (A:=unit)); eauto. i. des.
-        eapply rtc_n1; cycle 1.
-        { econs; eauto. ss. }
-        clear - STEPS0 VWN1 VWN2.
-        induction STEPS0; try refl.
-        econs 2; try apply IHSTEPS0; ss.
-        inv H. econs.
-        - eapply RMWExecUnit.state_step0_pf_mon; try exact STEP. nia.
-        - i. exploit DMBSY; eauto. i.
-          destruct e; ss. destruct rr, rw, wr, ww; ss.
-          cut (S n <= y.(RMWExecUnit.local).(Local.vwn).(View.ts)).
-          { i. exfalso.
-            exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
-              try eapply rtc_mon; try exact STEPS0;
-              try apply RMWExecUnit.dmbsy_over_state_step. i.
-            inv x2. inv LC. unfold le in *. nia.
-          }
-          clear - STEP x1.
-          inv STEP. inv LOCAL; ss. inv STEP. rewrite LC2. ss.
-          inv EVENT. ss.
-          etrans; [eauto|].
-          etrans; [|apply join_r].
-          eapply join_le; [apply Time.order|..]; ss.
-          apply join_l.
+      { exploit (fulfill_step_state_step0 (A:=unit)); eauto. i. des.
+        eapply rtc_n1; try exact FULFILL_STEPS. econs; eauto. ss.
       }
       exploit sim_thread_rtc_step; try exact STEPS; eauto.
       { eapply RMWExecUnit.rtc_state_step_rmw_wf; eauto. }
@@ -702,7 +766,7 @@ Module PStoRMW.
       - eauto.
       - ss.
     }
-  Admitted.
+  Qed.
 
   Lemma sim_S
         n c1 m

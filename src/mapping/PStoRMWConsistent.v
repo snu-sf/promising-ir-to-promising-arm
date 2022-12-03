@@ -1514,6 +1514,31 @@ Module PStoRMWConsistent.
       apply sim_regs_cons_add; ss.
   Qed.
 
+  Lemma sim_state_cons_fadd_weak
+        n st1_ps st1_arm e_arm st2_arm
+        ordr_arm ordw_arm loc_arm vold_arm vnew_arm
+        (SIM1: sim_state_cons n st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm)
+        (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm):
+    exists loc_ps ordr_ps ordw_ps,
+      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = Zpos loc_ps>>) /\
+      (<<ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps>>) /\
+      (<<ORDW: ordw_arm = ps_to_rmw_ordw ordw_ps>>) /\
+      forall vold_ps,
+      exists vnew_ps st2_ps,
+        (<<STEP_PS: State.step (ProgramEvent.update loc_ps vold_ps vnew_ps ordr_ps ordw_ps) st1_ps st2_ps>>).
+  Proof.
+    destruct st1_ps as [regs1_ps stmts1_ps].
+    destruct st1_arm as [stmts1_arm regs1_arm].
+    destruct st2_arm as [stmts2_arm regs2_arm].
+    inv SIM1. ss.
+    destruct stmts1_ps; ss; subst; [inv STEP|].
+    destruct t; ss; try by inv STEP.
+    destruct i; inv STEP.
+    esplits; ss. i.
+    esplits; [econs 1; econs 5|..]; eauto.
+  Qed.
+
   Lemma sim_state_cons_dmb
         n st1_ps st1_arm e_arm st2_arm
         rr rw wr ww

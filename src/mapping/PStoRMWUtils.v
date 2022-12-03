@@ -424,6 +424,21 @@ Section RMWStep.
           apply WF.
   Qed.
 
+  Lemma fulfill_step_fulfillable
+        tid ord n eu1 eu2
+        (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
+        (STEP: fulfill_step tid ord n eu1 eu2):
+    RMWLocal.fulfillable eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem).
+  Proof.
+    inv STEP.
+    - eapply RMWLocal.fulfill_fulfillable; eauto.
+      rewrite <- MEM. ss.
+    - eapply RMWLocal.read_fulfillable; eauto.
+      eapply RMWLocal.fulfill_fulfillable; eauto.
+      rewrite <- MEM.
+      eapply RMWLocal.control_fulfillable; eauto.
+  Qed.
+
   Lemma steps_fulfill_cases
         n sc tid eu1 eu2
         (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
