@@ -288,8 +288,8 @@ Section RMWStep.
         tid ord ts eu1 eu2
         (STEP: fulfill_step tid ord ts eu1 eu2)
         (ORD: OrdW.ge ord OrdW.strong):
-    eu1.(RMWExecUnit.local).(Local.vro).(View.ts) < ts /\
-    eu2.(RMWExecUnit.local).(Local.vro).(View.ts) < ts.
+    (<<VRO1: eu1.(RMWExecUnit.local).(Local.vro).(View.ts) < ts>>) /\
+    (<<VRO2: eu2.(RMWExecUnit.local).(Local.vro).(View.ts) < ts>>).
   Proof.
     destruct eu1, eu2. inv STEP.
     - inv FULFILL. ss. subst. s.
@@ -314,16 +314,19 @@ Section RMWStep.
   Lemma fulfill_step_vwn
         tid ord ts eu1 eu2
         (STEP: fulfill_step tid ord ts eu1 eu2):
-    eu1.(RMWExecUnit.local).(Local.vwn).(View.ts) < ts.
+    (<<VWN1: eu1.(RMWExecUnit.local).(Local.vwn).(View.ts) < ts>>) /\
+    (<<VWN2: eu2.(RMWExecUnit.local).(Local.vwn).(View.ts) < ts>>).
   Proof.
     destruct eu1, eu2. inv STEP.
     - inv FULFILL. ss. subst. s.
-      inv WRITABLE. ss.
-      eapply Nat.le_lt_trans; try exact EXT. ets.
+      inv WRITABLE. ss. splits.
+      + eapply Nat.le_lt_trans; try exact EXT. ets.
+      + eapply Nat.le_lt_trans; try exact EXT. ets.
     - inv STEP_CONTROL. ss. subst.
-      inv STEP_FULFILL.
+      inv STEP_FULFILL. ss.
       cut (View.ts (Local.vwn lc1') < ts).
-      { i. eapply Nat.le_lt_trans; try exact H1.
+      { i. splits; ss.
+        eapply Nat.le_lt_trans; try exact H1.
         clear - STEP_READ.
         eapply Local.read_incr. eauto.
       }
@@ -331,7 +334,7 @@ Section RMWStep.
       eapply Nat.le_lt_trans; try exact EXT. ets.
   Qed.
 
-  Lemma fulfill_step_after
+  Lemma fulfill_step_future
         tid ord ts eu1 eu2
         (STEP: fulfill_step tid ord ts eu1 eu2):
     exists msg_arm,
@@ -386,16 +389,16 @@ Section RMWStep.
     rewrite LOC. inv FULFILL. inv WRITABLE. ss.
   Qed.
 
-  Lemma fulfill_step_fulfillable_ts
+  Lemma fulfill_step_vcap
         tid ord ts eu1 eu2
         (WF: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
         (STEP: fulfill_step tid ord ts eu1 eu2):
-    RMWLocal.fulfillable_ts ts eu2.(RMWExecUnit.local).
+    (<<VCAP1: eu1.(RMWExecUnit.local).(Local.vcap).(View.ts) < ts>>) /\
+    (<<VCAP2: eu2.(RMWExecUnit.local).(Local.vcap).(View.ts) < ts>>).
   Proof.
     destruct eu1 as [st1 lc1 mem1], eu2 as [st2 lc2 mem2].
     inv STEP; ss; subst.
-    - inv FULFILL. inv WRITABLE. ss.
-      econs; ss.
+    - inv FULFILL. inv WRITABLE. ss. splits.
       + eapply Nat.le_lt_trans; [|exact EXT]. ets.
       + eapply Nat.le_lt_trans; [|exact EXT].
         apply join_spec; ets.
@@ -403,8 +406,10 @@ Section RMWStep.
       inv STEP_CONTROL.
       inv STEP_FULFILL. ss.
       inv WRITABLE. ss.
-      econs; ss.
-      + eapply Nat.le_lt_trans; [|exact EXT]. ets.
+      splits.
+      + exploit Local.read_incr; eauto. i.
+        eapply Nat.le_lt_trans; [apply x0|].
+        eapply Nat.le_lt_trans; [|exact EXT]. ets.
       + repeat apply join_lt;
           try by (eapply Nat.le_lt_trans; [|exact EXT]; ets).
         clear - WF STEP_READ TS MSG.

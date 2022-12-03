@@ -1548,7 +1548,7 @@ Module PStoRMWConsistent.
         (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
         (STEP_ARM: RMWExecUnit.state_step_dmbsy_exact (Some n) n tid eu1 eu2)
         (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
-        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local)):
+        (VCAP: eu2.(RMWExecUnit.local).(Local.vcap).(View.ts) <= n):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
       ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\
@@ -1573,10 +1573,7 @@ Module PStoRMWConsistent.
     { (* read *)
       exploit sim_state_cons_read; eauto. i. des. subst.
       exploit LOC.
-      { inv FULFILLABLE_TS.
-        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
-        inv STEP. ss. ets.
-      }
+      { etrans; [|exact VCAP]. inv STEP. ss. ets. }
       clear LOC. intro LOC.
       destruct (le_lt_dec
                   (FwdItem.read_view (Local.fwdbank lc1_arm vloc.(ValA.val)) ts (ps_to_rmw_ordr ord_ps)).(View.ts) n);
@@ -1631,10 +1628,7 @@ Module PStoRMWConsistent.
     { (* fulfill *)
       exploit sim_state_cons_write; eauto. i. des.
       exploit LOC.
-      { inv FULFILLABLE_TS.
-        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
-        inv STEP. ss. ets.
-      }
+      { etrans; [|exact VCAP]. inv STEP. ss. ets. }
       clear LOC. intro LOC.
       exploit sim_cons_fulfill; try exact STEP; eauto; ss.
       { Transparent Ordering.le.
@@ -1654,8 +1648,7 @@ Module PStoRMWConsistent.
     { (* fadd *)
       exploit sim_state_cons_fadd; eauto. i. des. subst.
       exploit LOC.
-      { inv FULFILLABLE_TS.
-        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+      { etrans; [|exact VCAP].
         clear - STEP_FULFILL STEP_CONTROL.
         inv STEP_CONTROL. ss.
         inv STEP_FULFILL. ss.
@@ -1796,8 +1789,7 @@ Module PStoRMWConsistent.
       { (* read view > n *)
         cut (n < n); try nia.
         eapply Nat.lt_le_trans; [exact READ_VIEW|].
-        inv FULFILLABLE_TS.
-        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
+        etrans; [|exact VCAP].
         clear - STEP_READ STEP_FULFILL STEP_CONTROL.
         inv STEP_CONTROL. ss.
         inv STEP_FULFILL. ss.
@@ -1819,10 +1811,7 @@ Module PStoRMWConsistent.
 
     { (* control *)
       exploit sim_state_cons_control; eauto.
-      { inv FULFILLABLE_TS.
-        etrans; [|apply Nat.lt_le_incl; exact LT_VCAP].
-        inv LC. ss. apply join_r.
-      }
+      { etrans; [|exact VCAP]. inv LC. ss. apply join_r. }
       exploit sim_cons_control; try exact LC; eauto. i. des.
       esplits.
       - econs 2; try refl.
@@ -1840,7 +1829,7 @@ Module PStoRMWConsistent.
         (WF1_ARM: RMWLocal.wf tid eu1.(RMWExecUnit.local) eu1.(RMWExecUnit.mem))
         (STEPS_ARM: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu2)
         (FULFILLABLE: RMWLocal.fulfillable eu2.(RMWExecUnit.local) eu2.(RMWExecUnit.mem))
-        (FULFILLABLE_TS: RMWLocal.fulfillable_ts n eu2.(RMWExecUnit.local)):
+        (VCAP: eu2.(RMWExecUnit.local).(Local.vcap).(View.ts) <= n):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
       ((<<SIM2: sim_thread_cons tid n th2_ps eu2>>) /\
@@ -1859,7 +1848,7 @@ Module PStoRMWConsistent.
       try eapply rtc_mon; try exact STEPS_ARM; i.
     { inv H1. econs. eauto. }
     exploit sim_thread_cons_step; eauto.
-    { eapply RMWLocal.fulfillable_ts_le; eauto. apply x1. }
+    { etrans; [apply x1|]. ss. }
     i. des; cycle 1.
     { esplits; eauto. }
     exploit PSThread.rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
@@ -1990,7 +1979,8 @@ Module PStoRMWConsistent.
     exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit));
       try eapply rtc_mon; try exact STEPS0;
       try apply RMWExecUnit.dmbsy_over_state_step; eauto. i.
-    exploit (fulfill_step_fulfillable_ts (A:=unit)); eauto. intro FULFILLABLE_TS.
+    exploit (fulfill_step_vwn (A:=unit)); eauto. i. des.
+    exploit (fulfill_step_vcap (A:=unit)); eauto. i. des.
     hexploit (RMWExecUnit.rtc_state_step_fulfillable (A:=unit));
       try eapply rtc_mon; try exact STEPS3;
       try apply RMWExecUnit.dmbsy_over_state_step.
@@ -1999,7 +1989,7 @@ Module PStoRMWConsistent.
     assert (CERTIFY_STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1'').
     { exploit rtc_n1; try exact STEPS0.
       { econs; eauto. ss. }
-      i. clear - FULFILL_TS x2 FULFILLABLE_TS.
+      i. clear - FULFILL_TS x2 VWN2.
       induction x2; i; try refl.
       econs 2; [|apply IHx2; auto].
       inv H. econs; eauto. i.
@@ -2013,10 +2003,9 @@ Module PStoRMWConsistent.
         try eapply rtc_mon; try exact x2;
         try apply RMWExecUnit.dmbsy_over_state_step. i.
       inv STEP. inv LOCAL; ss. destruct rr, rw, wr, ww; ss.
-      inv FULFILLABLE_TS.
       cut (n < n); try nia.
       eapply lt_le_trans; [|exact FULFILL_TS].
-      eapply le_lt_trans; [|exact LT_VWN].
+      eapply le_lt_trans; [|exact VWN2].
       etrans; [|apply x3].
       clear - x1 STEP.
       destruct y as []. s.
@@ -2026,8 +2015,7 @@ Module PStoRMWConsistent.
       - apply join_spec; ets.
     }
     exploit sim_thread_cons_rtc_step; try exact SIM_CONS;
-      try eapply rtc_mon; try exact CERTIFY_STEPS; eauto.
-    { inv FULFILLABLE_TS. econs; eapply lt_le_trans; eauto. }
+      try eapply rtc_mon; try exact CERTIFY_STEPS; eauto; try nia.
     i. des.
     - econs 2; try exact STEPS_PS.
       eapply sim_thread_cons_no_promises; eauto.

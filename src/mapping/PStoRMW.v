@@ -589,7 +589,7 @@ Module PStoRMW.
 
     destruct (OrdW.ge OrdW.pln ord) eqn:ORD.
     { (* pln *)
-      exploit (fulfill_step_after (A:=unit)); eauto. i. des.
+      exploit (fulfill_step_future (A:=unit)); eauto. i. des.
       replace eu1''.(RMWExecUnit.mem) with eu1.(RMWExecUnit.mem) in GET_ARM; cycle 1.
       { exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
           try eapply rtc_mon; try exact STEPS0;
@@ -651,10 +651,10 @@ Module PStoRMW.
       assert (STEPS: rtc (RMWExecUnit.state_step_dmbsy_exact (Some n) n tid) eu1 eu1'').
       { clear - STEPS0 FULFILL ORD.
         exploit (fulfill_step_state_step0 (A:=unit)); eauto. i. des.
-        exploit (fulfill_step_vwn (A:=unit)); eauto. i.
+        exploit (fulfill_step_vwn (A:=unit)); eauto. i. des.
         eapply rtc_n1; cycle 1.
         { econs; eauto. ss. }
-        clear - STEPS0 x0.
+        clear - STEPS0 VWN1 VWN2.
         induction STEPS0; try refl.
         econs 2; try apply IHSTEPS0; ss.
         inv H. econs.
@@ -666,9 +666,9 @@ Module PStoRMW.
             exploit (RMWExecUnit.rtc_state_step_incr (A:=unit));
               try eapply rtc_mon; try exact STEPS0;
               try apply RMWExecUnit.dmbsy_over_state_step. i.
-            inv x3. inv LC. unfold le in *. nia.
+            inv x2. inv LC. unfold le in *. nia.
           }
-          clear - STEP x2.
+          clear - STEP x1.
           inv STEP. inv LOCAL; ss. inv STEP. rewrite LC2. ss.
           inv EVENT. ss.
           etrans; [eauto|].
@@ -696,7 +696,7 @@ Module PStoRMW.
         eapply RMWExecUnit.state_step_pf_none.
         eapply RMWExecUnit.dmbsy_exact_state_step. eauto.
       - inv SIM2. econs; eauto.
-        exploit (fulfill_step_after (A:=unit)); eauto. i. des.
+        exploit (fulfill_step_future (A:=unit)); eauto. i. des.
         eapply sim_memory_S_fulfill; eauto.
       - refl.
       - eauto.
