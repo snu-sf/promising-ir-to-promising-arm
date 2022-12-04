@@ -156,7 +156,7 @@ Module PStoRMWThread.
                exists fts fval ftid,
                  (<<FROM: from = ntt fts>>) /\
                  (<<GET_FROM_ARM: Memory.get_msg fts mem_arm = Some (Msg.mk msg_arm.(Msg.loc) fval ftid)>>) /\
-                 (<<LATEST: Memory.latest msg_arm.(Msg.loc) fts ts mem_arm>>))) /\
+                 (<<EMPTY: empty_loc msg_arm.(Msg.loc) fts ts mem_arm>>))) /\
             (__guard__ (
                (<<MSG: msg_ps = Message.reserve>>) /\
                (<<PROMISED_ARM: Promises.lookup ts lc_arm.(Local.promises) <-> msg_arm.(Msg.tid) = tid>>) /\
@@ -1214,14 +1214,7 @@ Module PStoRMWThread.
     - inv MEM1. ss.
   Qed.
 
-  Definition ex_strong (loc: Loc.t) (from to: nat) (mem: Memory.t): Prop :=
-    forall ts msg
-           (TS1: from < S ts)
-           (TS2: S ts < to)
-           (MSG: List.nth_error mem ts = Some msg),
-      msg.(Msg.loc) <> loc.
-
-  Lemma update_ex_strong
+  Lemma update_empty_loc
         tid (lc1 lc2 lc3: Local.t (A:=unit)) mem
         ordr vlocr vold ts_old
         ordw vlocw vnew res ts_new view_pre
@@ -1230,7 +1223,7 @@ Module PStoRMWThread.
         (FULFILL: Local.fulfill true ordw vlocw vnew res ts_new tid view_pre lc2 mem lc3)
         (LOC: vlocr.(ValA.val) = vlocw.(ValA.val))
         (FULFILLABLE: RMWLocal.fulfillable lc3 mem):
-    ex_strong vlocr.(ValA.val) ts_old ts_new mem.
+    empty_loc vlocr.(ValA.val) ts_old ts_new mem.
   Proof.
     assert (EX: Memory.exclusive tid (ValA.val vlocr) ts_old ts_new mem).
     { inv READ. inv FULFILL. inv WRITABLE. ss.
@@ -1271,7 +1264,7 @@ Module PStoRMWThread.
         (TS: told < tnew)
         (OLD: Memory.read loc told mem_arm = Some vold)
         (NEW: Memory.get_msg tnew mem_arm = Some msg)
-        (EX: ex_strong loc told tnew mem_arm)
+        (EX: empty_loc loc told tnew mem_arm)
         (LOC1: msg.(Msg.loc) = loc)
         (LOC2: loc = Zpos loc_ps)
         (RESERVED: PSMemory.get loc_ps (ntt tnew) mem_ps = Some (from, Message.reserve)):
@@ -1303,7 +1296,7 @@ Module PStoRMWThread.
       }
       inv l; ss. exfalso.
       unfold Memory.read in OLD. ss. des_ifs.
-      exploit LATEST; try exact Heq; ss; try nia.
+      exploit EMPTY; try exact Heq; ss; try nia.
     }
   Qed.
 
@@ -1484,7 +1477,7 @@ Module PStoRMWThread.
         { instantiate (1:=Msg.mk vloc.(ValA.val) vnew.(ValA.val) tid).
           inv STEP_FULFILL. ss.
         }
-        { hexploit update_ex_strong; try exact STEP_READ; try exact STEP_FULFILL; ss.
+        { hexploit update_empty_loc; try exact STEP_READ; try exact STEP_FULFILL; ss.
           eapply RMWLocal.control_fulfillable; eauto.
         }
         { ss. }

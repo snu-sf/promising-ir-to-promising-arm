@@ -138,10 +138,15 @@ Proof.
   unfold join. unfold Time.join. nia.
 Qed.
 
+Definition empty_loc (loc: Loc.t) (from to: Time.t) (mem: Memory.t): Prop :=
+  forall ts msg
+    (TS1: from < S ts)
+    (TS2: S ts < to)
+    (MSG: List.nth_error mem ts = Some msg)
+    (LOC: msg.(Msg.loc) = loc),
+    False.
 
-(* SC fence with sc view le n *)
-
-Section RMWStep.
+Section RMWUtils.
   Context `{A: Type, _: orderC A eq}.
 
   Lemma dmbsy_le_cases
@@ -537,7 +542,7 @@ Section RMWStep.
         r in e. subst. ss.
     - inv LC. auto.
   Qed.
-End RMWStep.
+End RMWUtils.
 
 
 (* TODO: move to PS *)
