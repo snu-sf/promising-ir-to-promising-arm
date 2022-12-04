@@ -864,4 +864,42 @@ Module PStoRMW.
       + econs 5; eauto.
       + econs 6; eauto.
   Qed.
+
+  Lemma sim_n
+        n c1 m
+        (SIM1: sim n false c1 m)
+        (LT: n <= length m.(RMWMachine.mem))
+        (MEMORY: RMWMachine.promised_memory m)
+        (WF1_PS: PSConfiguration.wf c1)
+        (WF_ARM: RMWMachine.rmw_wf m):
+    exists c2,
+      (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
+      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m>>) \/
+       exists tid c3,
+         (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
+  Proof.
+    remember ((length m.(RMWMachine.mem)) - n) as k.
+    replace n with ((length m.(RMWMachine.mem)) - k) in * by nia.
+    clear n Heqk.
+    revert k c1 SIM1 LT WF1_PS.
+    induction k; i.
+    { rewrite Nat.sub_0_r in *.
+      exploit sim_sc; eauto.
+    }
+    destruct (le_lt_dec (S k) (length m.(RMWMachine.mem))); cycle 1.
+    { apply IHk; ss; try nia.
+      replace (length m.(RMWMachine.mem) - k)
+        with (length m.(RMWMachine.mem) - S k) by nia. ss.
+    }
+    exploit sim_sc; eauto. i. des; [|esplits; eauto].
+    exploit rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
+    exploit sim_S; try exact SIM2; eauto; try nia. i. des.
+    - exploit rtc_tau_step_future; try exact STEPS_PS0; eauto. i. des.
+      replace (S (length (RMWMachine.mem m) - S k))
+        with (length (RMWMachine.mem m) - k) in * by nia.
+      exploit IHk; try exact SIM0; eauto; try nia. i. des.
+      + esplits; [|left; eauto]. repeat (etrans; eauto).
+      + esplits; [|right; eauto]. repeat (etrans; eauto).
+    - esplits; [|right; eauto]. etrans; eauto.
+  Qed.
 End PStoRMW.

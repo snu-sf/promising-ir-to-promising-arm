@@ -574,3 +574,25 @@ Proof.
     econs; eauto.
   - inv x0. rewrite IdentMap.gsident; ss. splits. refl.
 Qed.
+
+Lemma rtc_all_step_future
+      c1 c2
+      (WF1: PSConfiguration.wf c1)
+      (STEPS: rtc PSConfiguration.all_step c1 c2):
+  (<<WF2: PSConfiguration.wf c2>>).
+Proof.
+  induction STEPS; ss.
+  apply IHSTEPS. inv H.
+  exploit PSConfiguration.step_future; eauto. i. des. ss.
+Qed.
+
+Lemma rtc_tau_step_future
+      c1 c2
+      (WF1: PSConfiguration.wf c1)
+      (STEPS: rtc PSConfiguration.tau_step c1 c2):
+  (<<WF2: PSConfiguration.wf c2>>).
+Proof.
+  induction STEPS; ss.
+  apply IHSTEPS. inv H.
+  exploit PSConfiguration.step_future; eauto. i. des. ss.
+Qed.
