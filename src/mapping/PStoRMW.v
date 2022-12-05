@@ -38,6 +38,7 @@ Require Import PromisingArch.mapping.RMWPromising.
 Require Import PromisingArch.mapping.PSLang.
 Require Import PromisingArch.mapping.PStoRMWUtils.
 Require Import PromisingArch.mapping.PStoRMWDef.
+Require Import PromisingArch.mapping.PStoRMWInit.
 Require Import PromisingArch.mapping.PStoRMWThread.
 Require Import PromisingArch.mapping.PStoRMWConsistent.
 
@@ -46,6 +47,7 @@ Set Nested Proofs Allowed.
 
 
 Module PStoRMW.
+  Import PStoRMWInit.
   Import PStoRMWThread.
   Import PStoRMWConsistent.
 
@@ -865,7 +867,7 @@ Module PStoRMW.
       + econs 6; eauto.
   Qed.
 
-  Lemma sim_n
+  Lemma sim_length
         n c1 m
         (SIM1: sim n false c1 m)
         (LT: n <= length m.(RMWMachine.mem))

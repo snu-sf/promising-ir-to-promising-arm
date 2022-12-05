@@ -129,6 +129,11 @@ Proof.
     + apply join_r.
 Qed.
 
+Lemma incr_ntt_S ts: PSTime.incr (ntt ts) = ntt (S ts).
+Proof.
+  ss.
+Qed.
+
 Lemma join_lt
       (a b c: Time.t)
       (LT1: a < c)
@@ -145,6 +150,36 @@ Definition empty_loc (loc: Loc.t) (from to: Time.t) (mem: Memory.t): Prop :=
     (MSG: List.nth_error mem ts = Some msg)
     (LOC: msg.(Msg.loc) = loc),
     False.
+
+Lemma empty_loc_app
+  loc from to mem1 mem2
+  (TO: to <= S (length mem1))
+  (EMPTY: empty_loc loc from to mem1):
+  empty_loc loc from to (mem1 ++ mem2).
+Proof.
+  ii. eapply EMPTY; eauto.
+  rewrite List.nth_error_app1 in MSG; ss. nia.
+Qed.
+
+Lemma read_ts
+  loc ts mem val
+  (READ: Memory.read loc ts mem = Some val):
+  ts <= length mem.
+Proof.
+  unfold Memory.read in *.
+  destruct ts; ss; try nia. des_ifs.
+  exploit nth_error_some; eauto.
+Qed.
+
+Lemma get_msg_ts
+  ts mem msg
+  (GET: Memory.get_msg ts mem = Some msg):
+  ts <= length mem.
+Proof.
+  unfold Memory.get_msg in *.
+  destruct ts; ss.
+  exploit nth_error_some; eauto.
+Qed.
 
 Section RMWUtils.
   Context `{A: Type, _: orderC A eq}.

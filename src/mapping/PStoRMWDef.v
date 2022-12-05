@@ -104,3 +104,9 @@ Fixpoint ps_to_rmw_stmt (stmt: Stmt.t): rmw_stmtT :=
 
 Definition ps_to_rmw_stmts (s: list Stmt.t): list rmw_stmtT :=
   List.map ps_to_rmw_stmt s.
+
+Definition ps_to_rmw_program (prog_ps: ps_program) (prog_arm: rmw_program): Prop :=
+  forall tid,
+    option_rel
+      (fun stmts_ps stmts_arm => stmts_arm = ps_to_rmw_stmts stmts_ps)
+      (IdentMap.find tid prog_ps) (IdMap.find tid prog_arm).
