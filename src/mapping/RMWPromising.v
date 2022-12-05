@@ -144,6 +144,18 @@ Section RMWLocal.
     - econs 4; eauto. i. apply PF. etrans; eauto.
   Qed.
 
+  Lemma step_pf_none_0:
+    step None <5= step (Some 0).
+  Proof.
+    i. inv PR; eauto.
+    - econs 3; eauto. unfold le. i.
+      replace ts with 0 in * by nia.
+      inv STEP. ss.
+    - econs 4; eauto. unfold le. i.
+      replace ts_new with 0 in * by nia.
+      inv STEP_FULFILL. ss.
+  Qed.
+
   Lemma step_incr
         n e tid mem lc1 lc2
         (LC: step n e tid mem lc1 lc2):
@@ -640,6 +652,20 @@ Section RMWExecUnit.
   Proof.
     i. inv PR.
     econs; eauto using state_step0_pf_mon.
+  Qed.
+
+  Lemma state_step0_pf_none_0:
+    state_step0 None <5= state_step0 (Some 0).
+  Proof.
+    i. inv PR.
+    econs; eauto using RMWLocal.step_pf_none_0.
+  Qed.
+
+  Lemma state_step_pf_none_0:
+    state_step None <3= state_step (Some 0).
+  Proof.
+    i. inv PR. econs.
+    eauto using state_step0_pf_none_0.
   Qed.
 
   Lemma dmbsy_state_step n sc:

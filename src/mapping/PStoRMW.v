@@ -904,4 +904,78 @@ Module PStoRMW.
       + esplits; [|right; eauto]. repeat (etrans; eauto).
     - esplits; [|right; eauto]. etrans; eauto.
   Qed.
+
+  Lemma exec_sim_0
+        prog_ps prog_arm m1 m
+        (COMPILE: ps_to_rmw_program prog_ps prog_arm)
+        (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) (RMWMachine.init prog_arm) m1)
+        (EXEC: RMWMachine.state_exec m1 m)
+        (NOPROMISE: RMWMachine.no_promise m):
+    exists c1,
+      (<<STEPS_PS: rtc PSConfiguration.tau_step
+                       (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c1>>) /\
+      (<<SIM: sim 0 false c1 m1>>).
+  Proof.
+    assert (LOCS: ps_locations_only (RMWMachine.mem m1)) by admit.
+    exploit init_sim_init; eauto. intro SIM_INIT.
+    exploit sim_init_rtc_promise_step; try exact PROMISE_STEPS; eauto.
+    { apply PSConfiguration.init_wf. }
+    i. des.
+    exploit PSConfiguration.init_wf. i.
+    exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS; eauto. s. i. des.
+    clear x0 GL_FUTURE.
+    specialize (RMWMachine.init_rmw_wf prog_arm). i.
+    exploit RMWMachine.rtc_step_promise_step_rmw_wf; try exact PROMISE_STEPS; eauto. i.
+    specialize (RMWMachine.init_promised_memory prog_arm). i.
+    hexploit RMWMachine.rtc_promise_step_promised_memory; try exact PROMISE_STEPS; eauto. i.
+    esplits; try exact STEPS_PS.
+    inv SIM2. econs; i; cycle 1.
+    { rewrite SIM_SC. refl. }
+    specialize (SIM_THREADS tid). inv SIM_THREADS; ss. econs.
+    inv REL. econs.
+    inv EXEC. specialize (TPOOL tid). ss.
+    rewrite <- H4 in *. inv TPOOL. ss.
+    econs.
+    - refl.
+    - inv x0. exploit (WF tid); eauto. intro WF1_ARM.
+      assert (PROMISED:
+               forall ts msg
+                      (GET: Memory.get_msg ts m1.(RMWMachine.mem) = Some msg)
+                      (TID: msg.(Msg.tid) = tid),
+                 Promises.lookup ts lc_arm.(Local.promises) = true).
+      { i. exploit H1; eauto. i. des.
+        rewrite TID in *. rewrite FIND in *. inv H4. ss.
+      }
+      clear - WF2 LOCS PROMISED WF1_ARM SIM_THREAD.
+      inv SIM_THREAD. econs; ss.
+      inv SIM_MEM. econs; i.
+      + inv WF1_ARM. exploit PRM; eauto. i. des.
+        exploit MEM_SOUND; eauto. i. des.
+        esplits; eauto. unfold le. i.
+        replace ts with 0 in * by nia. ss.
+      + rewrite PROMISES_PS in *. ss.
+      + exploit MEM_SOUND; eauto. i. des.
+        esplits; eauto. left. splits; ss.
+        { split; i.
+          - inv WF1_ARM. exploit PRM; eauto. i. des.
+            rewrite GET in *. clarify.
+          - exploit PROMISED; eauto.
+        }
+        { unfold le. i.
+          replace ts with 0 in * by nia. ss.
+        }
+      + exploit MEM_COMPLETE; eauto. i. des. eauto.
+      + rewrite FWD in FWD0. ss. subst.
+        admit.
+      + destruct (TimeFacts.le_lt_dec to PSTime.bot); cycle 1.
+        { exploit MEM_COMPLETE; eauto. i. des. congr. }
+        exploit TimeFacts.antisym; try exact l; try apply PSTime.bot_spec. i. subst.
+        inv WF2. inv GL_WF. inv MEM_CLOSED.
+        rewrite INHABITED in *. inv GET. apply PSTime.bot_spec.
+    - refl.
+    - eapply rtc_mon; try exact REL. i. inv H2.
+      econs; [apply RMWExecUnit.state_step0_pf_none_0; eauto|].
+      i. unfold le. nia.
+    - destruct b. ss. inv NOPROMISE. eauto.
+  Admitted.
 End PStoRMW.

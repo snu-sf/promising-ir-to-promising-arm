@@ -77,6 +77,7 @@ Module PStoRMWInit.
   Variant sim_thread_init (tid: Ident.t) (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
     | sim_thread_init_intro
         (PROMISES_PS: PSLocal.promises (PSThread.local th_ps) = BoolMap.bot)
+        (GPROMISES_PS: Global.promises (PSThread.global th_ps) = BoolMap.bot)
         (FWD: forall loc, eu.(RMWExecUnit.local).(Local.fwdbank) loc = FwdItem.mk bot bot false)
         (SIM_STATE: sim_state (PSThread.state th_ps) (RMWExecUnit.state eu))
         (SIM_TVIEW: sim_tview (PSLocal.tview (PSThread.local th_ps)) (RMWExecUnit.local eu))
@@ -363,7 +364,7 @@ Module PStoRMWInit.
         { destruct (IdentMap.find tid0 ths1); ss. }
         destruct (IdentMap.find tid0 ths1) eqn:FIND_PS'; ss. inv H0.
         inv REL. econs. econs.
-        inv SIM_THREAD0. ss. econs; ss.
+        inv SIM_THREAD0. ss. econs; ss; try congr.
         inv STEP0. inv LOCAL. inv MEM2. ss. subst.
         inv SIM2. ss.
         eapply sim_memory_init_other; eauto.
