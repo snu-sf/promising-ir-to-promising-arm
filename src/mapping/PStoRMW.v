@@ -117,70 +117,6 @@ Module PStoRMW.
     - refl.
     - eauto.
     - ss.
-
-    (* inv SIM1. *)
-    (* exploit (dmbsy_le_cases (A:=unit)); try exact STEPS3. i. des. *)
-    (* { exploit (dmbsy_le_cases (A:=unit)); try exact STEPS2. i. des. *)
-    (*   { esplits; try refl. left. split; ss. econs; eauto. } *)
-    (*   exploit rtc_n1; try exact STEPS_DMBSY1. *)
-    (*   { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. } *)
-    (*   intro STEPS_EXACT. *)
-    (*   exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto. *)
-    (*   { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. } *)
-    (*   { eapply dmbsy_vro_after. eauto. } *)
-    (*   { rewrite STEPS_DMBSY in STEPS_DMBSY2. *)
-    (*     eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); *)
-    (*       try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step; *)
-    (*       try exact STEPS_DMBSY2. *)
-    (*     ii. rewrite PROMISES3, Promises.lookup_bot in *. ss. *)
-    (*   } *)
-    (*   i. des; [|esplits; eauto]. *)
-    (*   esplits; eauto. left. split; ss. *)
-    (*   econs. *)
-    (*   - etrans; [exact STEPS1|]. *)
-    (*     eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step. *)
-    (*     eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step. *)
-    (*     eapply rtc_n1; try exact STEPS_DMBSY1. *)
-    (*     eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. *)
-    (*   - ss. *)
-    (*   - refl. *)
-    (*   - eauto. *)
-    (*   - ss. *)
-    (*   - eauto. *)
-    (*   - ss. *)
-    (* } *)
-
-    (* { exploit rtc_implies; try exact STEPS_DMBSY1; *)
-    (*     try eapply (RMWExecUnit.dmbsy_exact_dmbsy_over (A:=unit)). i. *)
-    (*   rewrite x0 in STEPS2. *)
-    (*   exploit (steps_dmbsy (A:=unit)); try exact STEPS2; eauto. i. *)
-    (*   exploit rtc_n1; try exact x1. *)
-    (*   { eapply RMWExecUnit.dmbsy_dmbsy_exact. eauto. } *)
-    (*   intro STEPS_EXACT. *)
-    (*   exploit sim_thread_rtc_step; try exact SIM_THREAD; try exact STEPS_EXACT; eauto. *)
-    (*   { eapply (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); eauto. } *)
-    (*   { eapply dmbsy_vro_after. eauto. } *)
-    (*   { eapply (RMWExecUnit.rtc_state_step_fulfillable (A:=unit)); *)
-    (*       try eapply rtc_mon; try eapply RMWExecUnit.dmbsy_over_state_step; *)
-    (*       try exact STEPS_DMBSY2. *)
-    (*     ii. rewrite PROMISES3, Promises.lookup_bot in *. ss. *)
-    (*   } *)
-    (*   i. des; [|esplits; eauto]. *)
-    (*   esplits; eauto. left. split; ss. *)
-    (*   econs. *)
-    (*   - etrans; [exact STEPS1|]. *)
-    (*     eapply rtc_mon; try eapply RMWExecUnit.pf_state_step_state_step. *)
-    (*     eapply rtc_mon; try eapply RMWExecUnit.dmbsy_exact_state_step. *)
-    (*     exact STEPS_EXACT. *)
-    (*   - ss. *)
-    (*   - refl. *)
-    (*   - eauto. *)
-    (*   - hexploit (RMWExecUnit.rtc_state_step_promises_le (A:=unit)); *)
-    (*       try eapply rtc_implies; try eapply RMWExecUnit.dmbsy_over_state_step; try exact STEPS3. *)
-    (*     i. auto. *)
-    (*   - eauto. *)
-    (*   - ss. *)
-    (* } *)
   Qed.
 
   Lemma sim_memory_future
@@ -966,7 +902,12 @@ Module PStoRMW.
         }
       + exploit MEM_COMPLETE; eauto. i. des. eauto.
       + rewrite FWD in FWD0. ss. subst.
-        admit.
+        inv WF2. inv GL_WF. inv MEM_CLOSED.
+        rewrite INHABITED. esplits; eauto.
+        * apply PSTime.bot_spec.
+        * refl.
+        * condtac; i; try apply PSTime.bot_spec.
+          apply PSView.bot_spec.
       + destruct (TimeFacts.le_lt_dec to PSTime.bot); cycle 1.
         { exploit MEM_COMPLETE; eauto. i. des. congr. }
         exploit TimeFacts.antisym; try exact l; try apply PSTime.bot_spec. i. subst.

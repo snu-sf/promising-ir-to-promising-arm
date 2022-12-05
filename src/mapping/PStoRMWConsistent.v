@@ -119,9 +119,10 @@ Module PStoRMWConsistent.
             (<<TO: to = ntt ts>>) /\
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
             (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
-        (FWD: forall loc ts (FWD: (lc_arm.(Local.fwdbank) loc).(FwdItem.ts) = ts),
-            exists loc_ps from val released na,
-              (<<LOC: loc = Zpos loc_ps>>) /\
+        (FWD: forall loc loc_ps ts
+                (LOC: loc = Zpos loc_ps)
+                (FWD: (lc_arm.(Local.fwdbank) loc).(FwdItem.ts) = ts),
+            exists from val released na,
               (<<CUR: PSTime.le (ntt ts) (lc_ps.(Local.tview).(TView.cur).(View.rlx) loc_ps)>>) /\
               (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val released na)>>) /\
               (<<REL_FWD: if (lc_arm.(Local.fwdbank) loc).(FwdItem.ex)
@@ -333,7 +334,7 @@ Module PStoRMWConsistent.
       apply andb_prop in X. des.
       revert X. unfold proj_sumbool.
       condtac; ss. i. r in e.
-      exploit FWD; try exact e. i. des. inv LOC. ss.
+      exploit FWD; try exact e; eauto. i. des. ss.
       rewrite GET_PS in *. inv GET_PS0.
       esplits; try exact GET_PS0; ss.
       unguardH x0. des; ss. inv MSG. ss.
@@ -345,7 +346,7 @@ Module PStoRMWConsistent.
         exploit PROMISED_PS; ss.
       + right. right. esplits; eauto. i.
         exploit FWD; eauto. s. i. des.
-        inv LOC. rewrite GET_PS0 in *. inv GET_PS. ss.
+        rewrite GET_PS0 in *. inv GET_PS. ss.
   Qed.
 
   Lemma sim_cons_read
@@ -383,7 +384,11 @@ Module PStoRMWConsistent.
       - eapply sim_tview_le; try exact TVIEW1; ss; i.
         eapply join_le; try apply View.order; try refl. apply TVIEW1.
       - econs; s; try apply MEM1. i.
-        apply MEM1 in FWD. des.
+        guardH FWD.
+        dup MEM1. inv MEM0.
+        exploit FWD0; try exact FWD; eauto.
+        clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE FWD0 RELEASED.
+        unguardH FWD. i. des.
         esplits; eauto. condtac; ss. i.
         etrans; [apply REL_FWD|]. apply le_ntt.
         eapply join_le; [apply Time.order|..].
@@ -591,8 +596,7 @@ Module PStoRMWConsistent.
           - apply andb_prop in X0. des.
             revert X0. unfold proj_sumbool. condtac; ss. r in e. i. clear X2.
             rewrite negb_true_iff in X1.
-            exploit FWD; try exact e. i. des.
-            rewrite LOC0 in *. inv LOC.
+            exploit FWD; try exact e; eauto. i. des. subst.
             assert (TS_EQ: ntt (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc))) =
                            View.rlx (TView.cur (Local.tview lc1_ps)) loc).
             { apply TimeFacts.antisym; ss. }
@@ -642,8 +646,7 @@ Module PStoRMWConsistent.
           - apply andb_prop in X0. des.
             revert X0. unfold proj_sumbool. condtac; ss. r in e. i. clear X2.
             rewrite negb_true_iff in X1.
-            exploit FWD; try exact e. i. des.
-            rewrite LOC0 in *. inv LOC.
+            exploit FWD; try exact e; eauto. i. des. subst.
             assert (TS_EQ: ntt (FwdItem.ts (Local.fwdbank lc1_arm (ValA.val vloc))) =
                            View.rlx (TView.cur (Local.tview lc1_ps)) loc).
             { apply TimeFacts.antisym; ss. }
@@ -947,6 +950,7 @@ Module PStoRMWConsistent.
       { (* FWD *)
         revert FWD0. unfold fun_add. condtac; ss.
         - i. r in e. clear X. subst.
+          rewrite LOC in e. inv e.
           exploit PSMemory.add_get0; try exact x3. i. des.
           esplits; try exact GET0; ss.
           { unfold TimeMap.join, TimeMap.singleton, LocFun.add.
@@ -1730,7 +1734,7 @@ Module PStoRMWConsistent.
             - apply andb_prop in X. des.
               revert X. unfold proj_sumbool. condtac; ss. r in e. i. clear X0 X X1.
               inv SIM_MEM. clear PRM_SOUND PRM_COMPLETE MEM_SOUND MEM_COMPLETE RELEASED.
-              exploit (FWD (Zpos loc_ps)); eauto. i. des. inv LOC0.
+              exploit (FWD (Zpos loc_ps)); eauto. i. des.
               rewrite LOC in *.
               inv STEP_PS. rewrite GET_PS in *. inv GET.
               revert REL_FWD. condtac; i.
