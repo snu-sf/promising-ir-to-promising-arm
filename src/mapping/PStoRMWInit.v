@@ -39,10 +39,8 @@ Require Import PromisingArch.mapping.PSLang.
 Require Import PromisingArch.mapping.PStoRMWUtils.
 Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWThread.
-Require Import PromisingArch.mapping.PStoRMWConsistent.
 
 Set Implicit Arguments.
-Set Nested Proofs Allowed.
 
 
 Module PStoRMWInit.
@@ -389,5 +387,101 @@ Module PStoRMWInit.
     exploit IHSTEPS; try exact SIM2; eauto. i. des.
     esplits; [|eauto].
     econs; eauto. econs. eauto.
+  Qed.
+
+  Definition event_ps_locations_only (e: RMWEvent.t (A:=View.t (A:=unit))): Prop :=
+    match e with
+    | RMWEvent.write _ vloc _
+    | RMWEvent.fadd _ _ vloc _ _ =>
+        exists loc_ps, vloc.(ValA.val) = Zpos loc_ps
+    | _ => True
+    end.
+
+  Lemma sim_state_ps_locations_only
+        st1_ps st1_arm e_arm st2_arm
+        (SIM1: sim_state st1_ps st1_arm)
+        (STEP: RMWState.step e_arm st1_arm st2_arm):
+    event_ps_locations_only e_arm.
+  Proof.
+    exploit sim_state_step; eauto. i. des.
+    inv EVENT; ss.
+    - rewrite LOC. eauto.
+    - rewrite LOC. eauto.
+  Qed.
+
+  Lemma exec_ps_locations_only
+        prog_ps prog_arm m1 m_final
+        (COMPILE: ps_to_rmw_program prog_ps prog_arm)
+        (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) (RMWMachine.init prog_arm) m1)
+        (EXEC: RMWMachine.state_exec m1 m_final)
+        (NOPROMISE: RMWMachine.no_promise m_final):
+    ps_locations_only m1.(RMWMachine.mem).
+  Proof.
+    exploit init_sim_init; eauto. intro SIM_INIT.
+    hexploit RMWMachine.rtc_promise_step_promised_memory;
+      try exact PROMISE_STEPS;
+      try apply RMWMachine.init_promised_memory.
+    intro PROMISED_MEMORY.
+    ii. destruct (classic (forall loc_ps, msg_arm.(Msg.loc) <> Zpos loc_ps)); cycle 1.
+    { eapply not_all_not_ex. ss. }
+    exfalso.
+    exploit PROMISED_MEMORY; eauto. i. des.
+    inv EXEC. specialize (TPOOL msg_arm.(Msg.tid)).
+    rewrite FIND in *. inv TPOOL.
+    destruct b as [st_final lc_final]. ss.
+    inv NOPROMISE. exploit PROMISES; eauto. intro NOPROMISE.
+    assert (STATES: forall tid st_arm lc_arm
+                      (FIND: IdMap.find tid (RMWMachine.tpool (RMWMachine.init prog_arm)) = Some (st_arm, lc_arm)),
+             exists st_ps, sim_state st_ps st_arm).
+    { clear - SIM_INIT. i.
+      inv SIM_INIT.
+      specialize (SIM_THREADS tid). ss.
+      rewrite FIND in *.
+      inv SIM_THREADS. inv REL. inv SIM_THREAD. eauto.
+    }
+    assert (STATES1: forall tid st_arm lc_arm
+                       (FIND: IdMap.find tid (RMWMachine.tpool m1) = Some (st_arm, lc_arm)),
+             exists st_ps, sim_state st_ps st_arm).
+    { clear - PROMISE_STEPS STATES.
+      remember (RMWMachine.init prog_arm) as m. clear Heqm.
+      revert STATES.
+      induction PROMISE_STEPS; i; eauto.
+      eapply IHPROMISE_STEPS; eauto.
+      clear tid st_arm lc_arm FIND PROMISE_STEPS IHPROMISE_STEPS. i.
+      destruct x, y.
+      inv H. inv STEP. ss. subst.
+      revert FIND. rewrite IdMap.add_spec. condtac; eauto.
+      r in e. subst. i. inv FIND. eauto.
+    }
+    exploit STATES1; eauto. i. des.
+    rename x0 into STATE.
+    clear - GET H STATE PROMISED NOPROMISE REL.
+    remember (RMWExecUnit.mk st lc m1.(RMWMachine.mem)) as eu1.
+    remember (RMWExecUnit.mk st_final lc_final m1.(RMWMachine.mem)) as eu2.
+    replace m1.(RMWMachine.mem) with eu1.(RMWExecUnit.mem) in GET by (subst; ss).
+    replace st with eu1.(RMWExecUnit.state) in STATE by (subst; ss).
+    replace lc with eu1.(RMWExecUnit.local) in PROMISED by (subst; ss).
+    replace lc_final with eu2.(RMWExecUnit.local) in NOPROMISE by (subst; ss).
+    clear - GET H STATE PROMISED NOPROMISE REL.
+    revert GET st_ps STATE PROMISED. induction REL; i.
+    { rewrite NOPROMISE, Promises.lookup_bot in *. ss. }
+    inv H0. inv STEP.
+    exploit sim_state_step; eauto. i. des. clear STEP_PS EVENT.
+    eapply IHREL; eauto; try congr.
+    exploit sim_state_ps_locations_only; try exact STATE0; eauto. intro LOCS.
+    clear - GET H PROMISED LOCS LOCAL.
+    destruct x, y. ss.
+    inv LOCAL; ss; subst; ss.
+    - inv STEP. ss.
+    - inv STEP. ss. des.
+      rewrite Promises.unset_o. condtac; ss. r in e. subst.
+      destruct msg_arm. rewrite GET in *. inv MSG. ss. congr.
+    - inv STEP_CONTROL. ss.
+      inv STEP_FULFILL. ss.
+      inv STEP_READ. ss. clear WRITABLE. des.
+      rewrite Promises.unset_o. condtac; ss. r in e. subst.
+      destruct msg_arm. rewrite GET in *. inv MSG. ss. congr.
+    - inv STEP. ss.
+    - inv LC. ss.
   Qed.
 End PStoRMWInit.

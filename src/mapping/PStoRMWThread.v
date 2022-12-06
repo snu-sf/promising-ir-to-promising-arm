@@ -1576,14 +1576,14 @@ Module PStoRMWThread.
   Qed.
 
   Variant sim_thread_exec (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
+    (th_ps: PSThread.t lang_ps) (eu eu_final: RMWExecUnit.t (A:=unit)): Prop :=
     | sim_thread_exec_intro
-        sc eu1 eu2
+        sc eu1
         (STEPS1: rtc (RMWExecUnit.state_step None tid) eu eu1)
         (SIM_THREAD: sim_thread tid n th_ps eu1)
         (SC: sc = if after_sc then S n else n)
-        (STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
-        (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
-        (STATE: RMWState.is_terminal eu2.(RMWExecUnit.state))
+        (STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu_final)
+        (PROMISES: eu_final.(RMWExecUnit.local).(Local.promises) = bot)
+        (STATE: RMWState.is_terminal eu_final.(RMWExecUnit.state))
   .
 End PStoRMWThread.

@@ -41,7 +41,6 @@ Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWThread.
 
 Set Implicit Arguments.
-Set Nested Proofs Allowed.
 
 
 Module PStoRMWTerminal.
@@ -92,8 +91,8 @@ Module PStoRMWTerminal.
   Qed.
 
   Lemma sim_thread_exec_terminal
-        tid n th1_ps eu
-        (SIM1: sim_thread_exec tid n true th1_ps eu)
+        tid n th1_ps eu eu2
+        (SIM1: sim_thread_exec tid n true th1_ps eu eu2)
         (N: n = length eu.(RMWExecUnit.mem))
         (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
         (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
@@ -102,7 +101,7 @@ Module PStoRMWTerminal.
         (RMW_WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      ((<<SIM2: sim_thread_exec tid n true th2_ps eu>>) /\
+      ((<<SIM2: sim_thread_exec tid n true th2_ps eu eu2>>) /\
        (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>> /\
        (<<TERMINAL_ST: Language.is_terminal _ th2_ps.(PSThread.state)>>) /\
        (<<TERMINAL_LC: PSLocal.is_terminal th2_ps.(PSThread.local)>>)) \/

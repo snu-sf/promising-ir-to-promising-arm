@@ -52,15 +52,19 @@ Module PSThreads := PromisingIR.Configuration.Threads.
 Module PSConfiguration := PromisingIR.Configuration.Configuration.
 
 
-(* timestamp conversion between PS and ARM *)
+Variant opt_rel3 A B C (rel: A -> B -> C -> Prop):
+  forall (a: option A) (b: option B) (c: option C), Prop :=
+  | opt_rel3_None:
+    opt_rel3 rel None None None
+  | opt_rel3_Some
+    a b c
+    (REL: rel a b c):
+    opt_rel3 rel (Some a) (Some b) (Some c)
+.
+#[export]
+ Hint Constructors opt_rel3: core.
 
-(* Global Program Instance nat_order: orderC Nat.max 0. *)
-(* Next Obligation. unfold join. lia. Qed. *)
-(* Next Obligation. unfold join. lia. Qed. *)
-(* Next Obligation. eauto using Max.max_assoc. Qed. *)
-(* Next Obligation. eauto using Max.max_comm. Qed. *)
-(* Next Obligation. unfold join. lia. Qed. *)
-(* Next Obligation. unfold bot. lia. Qed. *)
+(* timestamp conversion between PS and ARM *)
 
 Fixpoint ntt (n: Time.t): PSTime.t :=
   match n with

@@ -1344,6 +1344,16 @@ Module RMWMachine.
           { subst. ss. congr. }
   Qed.
 
+  Lemma rtc_step_state_step_wf
+        n m1 m2
+        (STEP: rtc (step (RMWExecUnit.state_step n)) m1 m2)
+        (WF: wf m1):
+    wf m2.
+  Proof.
+    revert WF. induction STEP; ss. i. apply IHSTEP.
+    eapply step_state_step_wf; eauto.
+  Qed.
+
   Lemma rtc_step_promise_step_wf
         m1 m2
         (STEP: rtc (step RMWExecUnit.promise_step) m1 m2)
@@ -1423,6 +1433,16 @@ Module RMWMachine.
       inv STEP0. inv LOCAL. inv MEM2. ss. subst.
       eapply RMWLocal.interference_wf; eauto.
       econs; ss. unfold proj_sumbool. condtac; ss. congr.
+  Qed.
+
+  Lemma rtc_step_state_step_rmw_wf
+        n m1 m2
+        (STEP: rtc (step (RMWExecUnit.state_step n)) m1 m2)
+        (WF: rmw_wf m1):
+    rmw_wf m2.
+  Proof.
+    revert WF. induction STEP; ss. i. apply IHSTEP.
+    eapply step_state_step_rmw_wf; eauto.
   Qed.
 
   Lemma rtc_step_promise_step_rmw_wf

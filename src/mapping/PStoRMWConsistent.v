@@ -41,7 +41,6 @@ Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWThread.
 
 Set Implicit Arguments.
-Set Nested Proofs Allowed.
 
 
 Module PStoRMWConsistent.
@@ -1987,8 +1986,8 @@ Module PStoRMWConsistent.
   Qed.
 
   Lemma sim_thread_exec_consistent
-        tid n after_sc th1_ps eu
-        (SIM1: sim_thread_exec tid n after_sc th1_ps eu)
+        tid n after_sc th1_ps eu eu2
+        (SIM1: sim_thread_exec tid n after_sc th1_ps eu eu2)
         (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
         (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
         (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))

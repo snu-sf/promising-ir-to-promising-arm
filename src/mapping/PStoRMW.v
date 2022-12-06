@@ -56,38 +56,41 @@ Module PStoRMW.
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
     forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
-           (sl_arm: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
+           (sl_arm sl_arm_final: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
     | sim_thread_sl_intro
-        st_ps lc_ps st_arm lc_arm
+        st_ps lc_ps st_arm lc_arm st_arm_final lc_arm_final
         (SIM_THREAD: sim_thread_exec tid n after_sc
-                       (PSThread.mk _ st_ps lc_ps gl_ps) (RMWExecUnit.mk st_arm lc_arm mem_arm)):
+                                     (PSThread.mk _ st_ps lc_ps gl_ps)
+                                     (RMWExecUnit.mk st_arm lc_arm mem_arm)
+                                     (RMWExecUnit.mk st_arm_final lc_arm_final mem_arm)):
       sim_thread_sl tid n after_sc gl_ps mem_arm
-        (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm)
+        (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm) (st_arm_final, lc_arm_final)
   .
 
-  Variant sim (n: Time.t) (after_sc: bool) (c: PSConfiguration.t) (m: RMWMachine.t): Prop :=
+  Variant sim (n: Time.t) (after_sc: bool) (c: PSConfiguration.t) (m m_final: RMWMachine.t): Prop :=
     | sim_intro
         (SIM_THREADS:
           forall tid,
-            opt_rel
+            opt_rel3
               (sim_thread_sl tid n after_sc c.(PSConfiguration.global) m.(RMWMachine.mem))
               (IdentMap.find tid c.(PSConfiguration.threads))
-              (IdMap.find tid m.(RMWMachine.tpool)))
+              (IdMap.find tid m.(RMWMachine.tpool))
+              (IdMap.find tid m_final.(RMWMachine.tpool)))
         (SIM_SC: forall loc,
             PSTime.le (c.(PSConfiguration.global).(PSGlobal.sc) loc) (ntt n))
   .
 
 
   Lemma sim_thread_exec_sc
-        tid n th1_ps eu
-        (SIM1: sim_thread_exec tid n false th1_ps eu)
+        tid n th1_ps eu eu2
+        (SIM1: sim_thread_exec tid n false th1_ps eu eu2)
         (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
         (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
         (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
         (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      ((<<SIM2: sim_thread_exec tid n true th2_ps eu>>) /\
+      ((<<SIM2: sim_thread_exec tid n true th2_ps eu eu2>>) /\
        (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
        exists e_ps th3_ps,
          (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
@@ -164,13 +167,13 @@ Module PStoRMW.
   Qed.
 
   Lemma sim_sc
-        n c1 m
-        (SIM1: sim n false c1 m)
+        n c1 m m_final
+        (SIM1: sim n false c1 m m_final)
         (WF1_PS: PSConfiguration.wf c1)
         (WF_ARM: RMWMachine.rmw_wf m):
     exists c2,
       (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
-      ((<<SIM2: sim n true c2 m>>) \/
+      ((<<SIM2: sim n true c2 m m_final>>) \/
        exists tid c3,
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
   Proof.
@@ -179,15 +182,17 @@ Module PStoRMW.
     clear WF_ARM. intro WF_ARM.
     assert (exists tids,
                (<<IN: forall tid (IN: List.In tid tids),
-                   opt_rel
+                   opt_rel3
                      (sim_thread_sl tid n false c1.(PSConfiguration.global) m.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
-                     (IdMap.find tid m.(RMWMachine.tpool))>>) /\
+                     (IdMap.find tid m.(RMWMachine.tpool))
+                     (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
                (<<OUT: forall tid (OUT: ~ List.In tid tids),
-                   opt_rel
+                   opt_rel3
                      (sim_thread_sl tid n true c1.(PSConfiguration.global) m.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
-                     (IdMap.find tid m.(RMWMachine.tpool))>>) /\
+                     (IdMap.find tid m.(RMWMachine.tpool))
+                     (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
                (<<NODUP: List.NoDup tids>>)).
     { exists (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1))).
       splits; i.
@@ -215,13 +220,14 @@ Module PStoRMW.
       eapply IHtids; try exact WF1_PS; eauto.
       - s. i.
         destruct (Ident.eq_dec tid a).
-        { subst. rewrite FIND_PS, <- H. ss. }
+        { subst. rewrite FIND_PS, <- H, <- H0. ss. }
         eapply (OUT tid). ii. des; eauto.
       - inv NODUP. ss.
     }
 
     inv SIM_THREAD.
     symmetry in H. rename H into FIND_ARM.
+    symmetry in H2. rename H2 into FIND_ARM_FINAL.
     destruct b as [st1_arm lc1_arm].
     inv REL. apply inj_pair2 in H1. subst.
     dup WF1_PS. inv WF1_PS0. inv WF. ss.
@@ -250,8 +256,11 @@ Module PStoRMW.
       exploit IN; eauto. i. inv x1.
       { destruct (IdentMap.find tid ths1) eqn:FIND; ss. }
       destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
-      destruct p as [[lang' st_ps] lc_ps], b as [st_arm lc_arm]. inv REL.
-      apply inj_pair2 in H2. subst. econs. econs.
+      destruct p as [[lang' st_ps] lc_ps],
+          b as [st_arm lc_arm],
+          c as [st_arm_final' lc_arm_final'].
+      inv REL.
+      apply inj_pair2 in H3. subst. econs. econs.
       inv SIM_THREAD0. econs; eauto.
       inv SIM_THREAD1. econs; ss.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
@@ -270,14 +279,17 @@ Module PStoRMW.
         try exact STEPS_PS; try exact x2; eauto. s. i. des. ss.
     }
     { i. rewrite IdentMap.gsspec. condtac; subst.
-      { rewrite FIND_ARM. econs. ss. }
+      { rewrite FIND_ARM, FIND_ARM_FINAL. econs. ss. }
       exploit (OUT tid).
       { ii. des; congr. }
       i. inv x1.
       { destruct (IdentMap.find tid ths1) eqn:FIND; ss. }
       destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
-      destruct p as [[lang' st_ps] lc_ps], b as [st_arm lc_arm]. inv REL.
-      apply inj_pair2 in H2. subst. econs. econs.
+      destruct p as [[lang' st_ps] lc_ps],
+          b as [st_arm lc_arm],
+          c as [st_arm_final' lc_arm_final'].
+      inv REL.
+      apply inj_pair2 in H3. subst. econs. econs.
       inv SIM_THREAD0. econs; eauto.
       inv SIM_THREAD1. econs; ss.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
@@ -502,8 +514,8 @@ Module PStoRMW.
   Qed.
 
   Lemma sim_thread_exec_S
-        tid n th1_ps eu
-        (SIM: sim_thread_exec tid n true th1_ps eu)
+        tid n th1_ps eu eu2
+        (SIM: sim_thread_exec tid n true th1_ps eu eu2)
         (PROMISED: Promises.lookup (S n) eu.(RMWExecUnit.local).(Local.promises) = true)
         (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
         (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
@@ -511,7 +523,7 @@ Module PStoRMW.
         (WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
     exists th2_ps,
       (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
-      ((<<SIM2: sim_thread_exec tid (S n) false th2_ps eu>>) /\
+      ((<<SIM2: sim_thread_exec tid (S n) false th2_ps eu eu2>>) /\
        (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>>) \/
        exists e_ps th3_ps,
          (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
@@ -712,15 +724,15 @@ Module PStoRMW.
   Qed.
 
   Lemma sim_S
-        n c1 m
-        (SIM1: sim n true c1 m)
+        n c1 m m_final
+        (SIM1: sim n true c1 m m_final)
         (LT: n < length m.(RMWMachine.mem))
         (MEMORY: RMWMachine.promised_memory m)
         (WF1_PS: PSConfiguration.wf c1)
         (WF_ARM: RMWMachine.rmw_wf m):
     exists c2,
       (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
-      ((<<SIM2: sim (S n) false c2 m>>) \/
+      ((<<SIM2: sim (S n) false c2 m m_final>>) \/
        exists tid c3,
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
   Proof.
@@ -734,7 +746,7 @@ Module PStoRMW.
     inv SIM1. ss.
     exploit SIM_THREADS. rewrite FIND_ARM. i. inv x0.
     destruct a as [[lang st1_ps] lc1_ps]. inv REL.
-    apply inj_pair2 in H2. subst.
+    apply inj_pair2 in H3. subst.
     rename H0 into FIND_PS.
     dup WF1_PS. inv WF1_PS0. inv WF.
     exploit THREADS; eauto.
@@ -762,7 +774,7 @@ Module PStoRMW.
     econs; s; cycle 1.
     { i. etrans; eauto. econs. apply PSTime.incr_spec. }
     intro tid'. rewrite IdentMap.gsspec. condtac.
-    { subst. rewrite FIND_ARM. econs. econs.
+    { subst. rewrite FIND_ARM, <- H2. econs. econs.
       destruct th2_ps. ss.
     }
     specialize (SIM_THREADS tid').
@@ -780,7 +792,7 @@ Module PStoRMW.
       clear DISJOINT THREADS PROMISES. intro DISJOINT. symmetry in DISJOINT.
       exploit PSThread.rtc_tau_step_disjoint;
         try exact STEPS_PS; try exact DISJOINT; ss. i. des.
-      inv SIM2. inv SIM_THREAD. clear eu2 STEPS2 PROMISES STATE SIM_STATE SIM_TVIEW.
+      inv SIM2. inv SIM_THREAD. clear STEPS2 PROMISES STATE SIM_STATE SIM_TVIEW.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. s. i.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS0. s. i.
       rewrite x0, x1 in *. clear x0 x1.
@@ -810,15 +822,15 @@ Module PStoRMW.
   Qed.
 
   Lemma sim_length
-        n c1 m
-        (SIM1: sim n false c1 m)
+        n c1 m m_final
+        (SIM1: sim n false c1 m m_final)
         (LT: n <= length m.(RMWMachine.mem))
         (MEMORY: RMWMachine.promised_memory m)
         (WF1_PS: PSConfiguration.wf c1)
         (WF_ARM: RMWMachine.rmw_wf m):
     exists c2,
       (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
-      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m>>) \/
+      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m m_final>>) \/
        exists tid c3,
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
   Proof.
@@ -848,17 +860,19 @@ Module PStoRMW.
   Qed.
 
   Lemma exec_sim_0
-        prog_ps prog_arm m1 m
+        prog_ps prog_arm m1 m_final
         (COMPILE: ps_to_rmw_program prog_ps prog_arm)
         (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) (RMWMachine.init prog_arm) m1)
-        (EXEC: RMWMachine.state_exec m1 m)
-        (TERMINAL: RMWMachine.is_terminal m):
+        (EXEC: RMWMachine.state_exec m1 m_final)
+        (TERMINAL: RMWMachine.is_terminal m_final):
     exists c1,
       (<<STEPS_PS: rtc PSConfiguration.tau_step
                        (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c1>>) /\
-      (<<SIM: sim 0 false c1 m1>>).
+      (<<SIM: sim 0 false c1 m1 m_final>>).
   Proof.
-    assert (LOCS: ps_locations_only (RMWMachine.mem m1)) by admit.
+    hexploit exec_ps_locations_only; eauto.
+    { apply RMWMachine.is_terminal_no_promise. ss. }
+    intro LOCS.
     inv TERMINAL.
     exploit init_sim_init; eauto. intro SIM_INIT.
     exploit sim_init_rtc_promise_step; try exact PROMISE_STEPS; eauto.
@@ -874,11 +888,17 @@ Module PStoRMW.
     esplits; try exact STEPS_PS.
     inv SIM2. econs; i; cycle 1.
     { rewrite SIM_SC. refl. }
-    specialize (SIM_THREADS tid). inv SIM_THREADS; ss. econs.
+    specialize (SIM_THREADS tid). inv SIM_THREADS.
+    { inv EXEC. specialize (TPOOL tid).
+      rewrite <- H4 in *. inv TPOOL. ss.
+    }
+    dup EXEC. inv EXEC0. specialize (TPOOL tid).
+    rewrite <- H4 in *. inv TPOOL. clear MEM REL0.
     inv REL. econs.
     inv EXEC. specialize (TPOOL tid). ss.
     rewrite <- H4 in *. inv TPOOL. ss.
-    econs.
+    destruct b0 as [st_arm_final lc_arm_final].
+    econs. econs.
     - refl.
     - inv x0. exploit (WF tid); eauto. intro WF1_ARM.
       assert (PROMISED:
@@ -921,24 +941,25 @@ Module PStoRMW.
         inv WF2. inv GL_WF. inv MEM_CLOSED.
         rewrite INHABITED in *. inv GET. apply PSTime.bot_spec.
     - refl.
-    - eapply rtc_mon; try exact REL. i. inv H2.
+    - rewrite <- H6 in *. inv H7.
+      eapply rtc_mon; try exact REL. i. inv H2.
       econs; [apply RMWExecUnit.state_step0_pf_none_0; eauto|].
       i. unfold le. nia.
-    - destruct b. ss.
+    - rewrite <- H6 in *.
       exploit TERMINAL0; eauto. i. des. ss.
-    - destruct b. ss.
+    - rewrite <- H6 in *.
       exploit TERMINAL0; eauto. i. des. ss.
-  Admitted.
+  Qed.
 
   Lemma sim_terminal
-        c1 m
-        (SIM1: sim (length m.(RMWMachine.mem)) true c1 m)
+        c1 m m_final
+        (SIM1: sim (length m.(RMWMachine.mem)) true c1 m m_final)
         (WF_PS: PSConfiguration.wf c1)
         (WF_ARM: RMWMachine.wf m)
         (RMW_WF_ARM: RMWMachine.rmw_wf m):
     exists c2,
       (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
-      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m>>) /\
+      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m m_final>>) /\
        (<<TERMINAL: PSConfiguration.is_terminal c2>>) \/
        exists tid c3,
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
@@ -951,16 +972,18 @@ Module PStoRMW.
     assert (exists tids,
                (<<IN: forall tid (IN: List.In tid tids),
                    (<<SIM_THREAD:
-                     opt_rel
+                     opt_rel3
                        (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
                        (IdentMap.find tid c1.(PSConfiguration.threads))
-                       (IdMap.find tid m.(RMWMachine.tpool))>>)>>) /\
+                       (IdMap.find tid m.(RMWMachine.tpool))
+                       (IdMap.find tid m_final.(RMWMachine.tpool))>>)>>) /\
                (<<OUT: forall tid (OUT: ~ List.In tid tids),
                    (<<SIM_THREAD:
-                     opt_rel
+                     opt_rel3
                        (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
                        (IdentMap.find tid c1.(PSConfiguration.threads))
-                       (IdMap.find tid m.(RMWMachine.tpool))>>) /\
+                       (IdMap.find tid m.(RMWMachine.tpool))
+                       (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
                    (<<TERMINAL: forall st_ps lc_ps
                                   (FIND: IdentMap.find tid c1.(PSConfiguration.threads) = Some (existT _ lang_ps st_ps, lc_ps)),
                        (<<TERMINAL_ST: Language.is_terminal _ st_ps>>) /\
@@ -988,7 +1011,7 @@ Module PStoRMW.
       - econs; eauto. i. eapply OUT; eauto.
       - ii. exploit OUT; eauto. i. des.
         rewrite FIND in SIM_THREAD. inv SIM_THREAD.
-        inv REL. apply inj_pair2 in H2. subst. eauto.
+        inv REL. apply inj_pair2 in H3. subst. eauto.
     }
     destruct c1 as [ths1 gl1], m as [tpool1 mem1_arm].
     exploit (IN a); ss; auto. intro SIM_THREAD. des.
@@ -996,13 +1019,13 @@ Module PStoRMW.
     { inv SIM_THREAD.
       eapply IHtids; try exact WF1_PS; eauto.
       - s. i. destruct (Ident.eq_dec tid a).
-        { subst. rewrite FIND_PS, <- H. splits; ss. }
+        { subst. rewrite FIND_PS, <- H, <- H0. splits; ss. }
         eapply (OUT tid). ii. des; eauto.
       - inv NODUP. ss.
     }
 
     inv SIM_THREAD. inv REL.
-    apply inj_pair2 in H2. subst.
+    apply inj_pair2 in H3. subst.
     symmetry in H. rename H into FIND_ARM.
     dup WF_PS. inv WF_PS0. inv WF. ss.
     exploit THREADS; eauto. intro LC_WF_PS.
@@ -1033,8 +1056,8 @@ Module PStoRMW.
       exploit IN; eauto. i. inv x1.
       { destruct (IdentMap.find tid ths1) eqn:FIND; ss. }
       destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
-      destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm']. inv REL.
-      apply inj_pair2 in H2. subst. econs. econs.
+      destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm'], c as [st_arm_final' lc_arm_final']. inv REL.
+      apply inj_pair2 in H4. subst. econs. econs.
       inv SIM_THREAD0. econs; eauto.
       inv SIM_THREAD1. econs; ss.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
@@ -1053,7 +1076,7 @@ Module PStoRMW.
         try exact STEPS_PS; try exact x2; eauto. s. i. des. ss.
     }
     { i. rewrite IdentMap.gsspec. condtac; subst.
-      { rewrite FIND_ARM. splits; i.
+      { rewrite FIND_ARM, <- H2. splits; i.
         - econs. ss.
         - eapply (f_equal (fun x => match x with
                                  | Some x => x
@@ -1069,7 +1092,7 @@ Module PStoRMW.
       { destruct (IdentMap.find tid ths1) eqn:FIND; ss. splits; ss. }
       destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
       destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm']. inv REL.
-      apply inj_pair2 in H2. subst. splits; i.
+      apply inj_pair2 in H4. subst. splits; i.
       - inv SIM_THREAD0. econs. econs. econs; eauto.
         inv SIM_THREAD1. econs; ss.
         exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
@@ -1092,5 +1115,44 @@ Module PStoRMW.
     i. des.
     - esplits; [|left; eauto]. etrans; eauto.
     - esplits; [|right; eauto]. etrans; eauto.
+  Qed.
+
+  Theorem ps_to_rmw
+          prog_ps
+          prog_arm m_final
+          (COMPILE: ps_to_rmw_program prog_ps prog_arm)
+          (EXEC: RMWMachine.pf_exec prog_arm m_final)
+          (TERMINAL: RMWMachine.is_terminal m_final):
+    exists c,
+      (<<STEPS: rtc Configuration.tau_step
+                    (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c>>) /\
+      ((<<SIM: exists m, sim (length m_final.(RMWMachine.mem)) true c m m_final>>) /\
+       (<<TERMINAL: Configuration.is_terminal c>>) \/
+       exists tid c',
+         (<<STEP: PSConfiguration.step MachineEvent.failure tid c c'>>)).
+  Proof.
+    inv EXEC.
+    exploit exec_sim_0; eauto. i. des.
+    exploit PSConfiguration.init_wf. i.
+    exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
+    rename WF2 into WF_PS. clear GL_FUTURE.
+    exploit RMWMachine.rtc_step_promise_step_wf;
+      try exact STEP1; try apply RMWMachine.init_wf.
+    intro WF_ARM.
+    exploit RMWMachine.rtc_step_promise_step_rmw_wf;
+      try exact STEP1; try apply RMWMachine.init_rmw_wf.
+    intro RMW_WF_ARM.
+    hexploit RMWMachine.rtc_promise_step_promised_memory;
+      try exact STEP1; try apply RMWMachine.init_promised_memory.
+    intro PROMISED_MEMORY.
+
+    exploit sim_length; try exact SIM; eauto; try nia. i. des; cycle 1.
+    { esplits; [|right; eauto]. etrans; eauto. }
+    exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS0; ss.
+    i. des. clear GL_FUTURE.
+    exploit sim_terminal; try exact SIM2; eauto. i. des; cycle 1.
+    { esplits; [|right; eauto]. repeat (etrans; eauto). }
+    inv STEP2. rewrite <- MEM.
+    esplits; [|left; eauto]. repeat (etrans; eauto).
   Qed.
 End PStoRMW.
