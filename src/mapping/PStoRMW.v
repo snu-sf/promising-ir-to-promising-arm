@@ -41,6 +41,7 @@ Require Import PromisingArch.mapping.PStoRMWDef.
 Require Import PromisingArch.mapping.PStoRMWInit.
 Require Import PromisingArch.mapping.PStoRMWThread.
 Require Import PromisingArch.mapping.PStoRMWConsistent.
+Require Import PromisingArch.mapping.PStoRMWTerminal.
 
 Set Implicit Arguments.
 Set Nested Proofs Allowed.
@@ -50,6 +51,7 @@ Module PStoRMW.
   Import PStoRMWInit.
   Import PStoRMWThread.
   Import PStoRMWConsistent.
+  Import PStoRMWTerminal.
 
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
     (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
@@ -927,4 +929,168 @@ Module PStoRMW.
     - destruct b. ss.
       exploit TERMINAL0; eauto. i. des. ss.
   Admitted.
+
+  Lemma sim_terminal
+        c1 m
+        (SIM1: sim (length m.(RMWMachine.mem)) true c1 m)
+        (WF_PS: PSConfiguration.wf c1)
+        (WF_ARM: RMWMachine.wf m)
+        (RMW_WF_ARM: RMWMachine.rmw_wf m):
+    exists c2,
+      (<<STEPS_PS: rtc PSConfiguration.tau_step c1 c2>>) /\
+      ((<<SIM2: sim (length m.(RMWMachine.mem)) true c2 m>>) /\
+       (<<TERMINAL: PSConfiguration.is_terminal c2>>) \/
+       exists tid c3,
+         (<<STEP: PSConfiguration.step MachineEvent.failure tid c2 c3>>)).
+  Proof.
+    inv SIM1.
+    exploit RMWMachine.rtc_step_promise_step_wf; eauto.
+    clear WF_ARM. intro WF_ARM.
+    exploit RMWMachine.rtc_step_promise_step_rmw_wf; eauto.
+    clear RMW_WF_ARM. intro RMW_WF_ARM.
+    assert (exists tids,
+               (<<IN: forall tid (IN: List.In tid tids),
+                   (<<SIM_THREAD:
+                     opt_rel
+                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                       (IdentMap.find tid c1.(PSConfiguration.threads))
+                       (IdMap.find tid m.(RMWMachine.tpool))>>)>>) /\
+               (<<OUT: forall tid (OUT: ~ List.In tid tids),
+                   (<<SIM_THREAD:
+                     opt_rel
+                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                       (IdentMap.find tid c1.(PSConfiguration.threads))
+                       (IdMap.find tid m.(RMWMachine.tpool))>>) /\
+                   (<<TERMINAL: forall st_ps lc_ps
+                                  (FIND: IdentMap.find tid c1.(PSConfiguration.threads) = Some (existT _ lang_ps st_ps, lc_ps)),
+                       (<<TERMINAL_ST: Language.is_terminal _ st_ps>>) /\
+                       (<<TERMINAL_LC: PSLocal.is_terminal lc_ps>>)>>)>>) /\
+               (<<NODUP: List.NoDup tids>>)).
+    { exists (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1))).
+      splits; i.
+      - specialize (SIM_THREADS tid).
+        inv SIM_THREADS; ss. econs. ss.
+      - specialize (SIM_THREADS tid).
+        inv SIM_THREADS; ss. exfalso.
+        exploit PSThreads.tids_o. rewrite <- H0. s. i.
+        rewrite IdentSet.mem_spec in x0.
+        rewrite <- IdentSet.elements_spec1 in x0.
+        apply OUT. clear - x0.
+        induction (IdentSet.elements (PSThreads.tids (PSConfiguration.threads c1)));
+          inv x0; ss; auto.
+      - specialize (IdentSet.elements_spec2w (PSThreads.tids (PSConfiguration.threads c1))). i.
+        clear - H. induction H; econs; eauto.
+    }
+    des. clear SIM_THREADS.
+    revert c1 WF_PS SIM_SC IN OUT NODUP.
+    induction tids; i.
+    { esplits; try refl. left. split.
+      - econs; eauto. i. eapply OUT; eauto.
+      - ii. exploit OUT; eauto. i. des.
+        rewrite FIND in SIM_THREAD. inv SIM_THREAD.
+        inv REL. apply inj_pair2 in H2. subst. eauto.
+    }
+    destruct c1 as [ths1 gl1], m as [tpool1 mem1_arm].
+    exploit (IN a); ss; auto. intro SIM_THREAD. des.
+    destruct (IdentMap.find a ths1) as [[[lang st1_ps] lc1_ps]|] eqn:FIND_PS; cycle 1.
+    { inv SIM_THREAD.
+      eapply IHtids; try exact WF1_PS; eauto.
+      - s. i. destruct (Ident.eq_dec tid a).
+        { subst. rewrite FIND_PS, <- H. splits; ss. }
+        eapply (OUT tid). ii. des; eauto.
+      - inv NODUP. ss.
+    }
+
+    inv SIM_THREAD. inv REL.
+    apply inj_pair2 in H2. subst.
+    symmetry in H. rename H into FIND_ARM.
+    dup WF_PS. inv WF_PS0. inv WF. ss.
+    exploit THREADS; eauto. intro LC_WF_PS.
+    rename GL_WF into GL_WF_PS.
+    clear DISJOINT THREADS PROMISES.
+    dup WF_ARM. inv WF_ARM0.
+    exploit WF; eauto.
+    clear WF. s. intro WF1_ARM.
+    dup RMW_WF_ARM. inv RMW_WF_ARM0.
+    exploit WF; eauto.
+    clear WF. s. intro RMW_WF1_ARM.
+    exploit sim_thread_exec_terminal; try exact SIM_THREAD; eauto. i. des; cycle 1.
+    { (* UB *)
+      destruct th3_ps.
+      esplits; try refl.
+      right. esplits. rewrite <- FAILURE.
+      econs; try apply FIND_PS; eauto. i. congr.
+    }
+
+    destruct th2_ps as [st2_ps lc2_ps gl2]. ss.
+    exploit PSThread.rtc_tau_step_future; try exact STEPS_PS; eauto. s. i. des.
+    hexploit sim_thread_exec_consistent; try exact SIM2; ss. intro CONSISTENT.
+    exploit (@rtc_thread_tau_step_rtc_tau_step (Configuration.mk ths1 gl1)); eauto. s. i. des.
+    exploit PSConfiguration.rtc_tau_step_future; try exact x0; ss. i. des.
+    exploit IHtids; try exact WF2; ss.
+    { i. rewrite IdentMap.gsspec. condtac; subst.
+      { inv NODUP. ss. }
+      exploit IN; eauto. i. inv x1.
+      { destruct (IdentMap.find tid ths1) eqn:FIND; ss. }
+      destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
+      destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm']. inv REL.
+      apply inj_pair2 in H2. subst. econs. econs.
+      inv SIM_THREAD0. econs; eauto.
+      inv SIM_THREAD1. econs; ss.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
+      s. i. rewrite x1 in *. clear x1.
+      inv SIM2. inv SIM_THREAD0. ss.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS0.
+      s. i. rewrite x1 in *. clear x1.
+      inv SIM_THREAD. inv SIM_THREAD0. ss.
+      exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS4.
+      s. i. rewrite x1 in *. clear x1.
+      eapply (@sim_memory_future gl1 gl2); eauto.
+      inv WF_PS. inv WF. ss.
+      exploit THREADS; try exact FIND. i.
+      exploit DISJOINT; try exact n0; eauto. i. symmetry in x2.
+      exploit PSThread.rtc_tau_step_disjoint;
+        try exact STEPS_PS; try exact x2; eauto. s. i. des. ss.
+    }
+    { i. rewrite IdentMap.gsspec. condtac; subst.
+      { rewrite FIND_ARM. splits; i.
+        - econs. ss.
+        - eapply (f_equal (fun x => match x with
+                                 | Some x => x
+                                 | None => (existT (Language.state (E:=ProgramEvent.t)) lang_ps st2_ps, lc2_ps)
+                                 end)) in FIND.
+          dup FIND. eapply (f_equal fst) in FIND0. ss.
+          apply inj_pair2 in FIND0. subst. inv FIND.
+          ss.
+      }
+      exploit (OUT tid).
+      { ii. des; congr. }
+      i. des. inv SIM_THREAD0.
+      { destruct (IdentMap.find tid ths1) eqn:FIND; ss. splits; ss. }
+      destruct (IdentMap.find tid ths1) eqn:FIND; ss. inv H0.
+      destruct p as [[lang' st_ps'] lc_ps'], b as [st_arm' lc_arm']. inv REL.
+      apply inj_pair2 in H2. subst. splits; i.
+      - inv SIM_THREAD0. econs. econs. econs; eauto.
+        inv SIM_THREAD1. econs; ss.
+        exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1.
+        s. i. rewrite x1 in *. clear x1.
+        inv SIM2. inv SIM_THREAD0. ss.
+        exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS0.
+        s. i. rewrite x1 in *. clear x1.
+        inv SIM_THREAD. inv SIM_THREAD0. ss.
+        exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS4.
+        s. i. rewrite x1 in *. clear x1.
+        eapply (@sim_memory_future gl1 gl2); eauto.
+        inv WF_PS. inv WF. ss.
+        exploit THREADS; try exact FIND. i.
+        exploit DISJOINT; try exact n0; eauto. i. symmetry in x2.
+        exploit PSThread.rtc_tau_step_disjoint;
+          try exact STEPS_PS; try exact x2; eauto. s. i. des. ss.
+      - inv FIND0. apply inj_pair2 in H1. subst. eauto.
+    }
+    { inv NODUP. ss. }
+    i. des.
+    - esplits; [|left; eauto]. etrans; eauto.
+    - esplits; [|right; eauto]. etrans; eauto.
+  Qed.
 End PStoRMW.
