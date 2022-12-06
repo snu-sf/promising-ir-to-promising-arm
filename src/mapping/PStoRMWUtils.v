@@ -184,6 +184,39 @@ Qed.
 Section RMWUtils.
   Context `{A: Type, _: orderC A eq}.
 
+  Lemma dmbsy_over_length_non_dmbsy
+        n sc tid eu1 eu2
+        (STEP: RMWExecUnit.state_step_dmbsy_over n sc tid eu1 eu2)
+        (SC: sc > length eu1.(RMWExecUnit.mem))
+        (WF: RMWExecUnit.wf tid eu1):
+    RMWExecUnit.state_step_non_dmbsy n tid eu1 eu2.
+  Proof.
+    inv STEP. econs; eauto. ii.
+    exploit DMBSY; eauto. i. clear DMBSY.
+    exploit lt_le_trans; [exact SC|exact x0|]. i.
+    inv WF. inv LOCAL.
+    exploit lt_le_trans; [exact x1|..].
+    { s. eapply join_spec; eauto. }
+    nia.
+  Qed.
+
+  Lemma rtc_dmbsy_over_length_non_dmbsy
+        n sc tid eu1 eu2
+        (STEP: rtc (RMWExecUnit.state_step_dmbsy_over n sc tid) eu1 eu2)
+        (SC: sc > length eu1.(RMWExecUnit.mem))
+        (WF: RMWExecUnit.wf tid eu1):
+    rtc (RMWExecUnit.state_step_non_dmbsy n tid) eu1 eu2.
+  Proof.
+    revert SC WF.
+    induction STEP; i; try refl.
+    exploit RMWExecUnit.state_step_wf;
+      try eapply RMWExecUnit.dmbsy_over_state_step; eauto. i.
+    exploit IHSTEP; eauto.
+    { inv H1. inv STEP0. congr. }
+    i. econs 2; eauto.
+    eapply dmbsy_over_length_non_dmbsy; eauto.
+  Qed.
+
   Lemma dmbsy_le_cases
         n sc tid eu1 eu4
         (STEPS: rtc (RMWExecUnit.state_step_dmbsy_over n sc tid) eu1 eu4):

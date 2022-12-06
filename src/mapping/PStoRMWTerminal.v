@@ -1,0 +1,156 @@
+Require Import NArith.
+Require Import PArith.
+Require Import ZArith.
+Require Import Lia.
+Require Import EquivDec.
+Require Import RelationClasses.
+Require Import Bool.
+
+From sflib Require Import sflib.
+From Paco Require Import paco.
+
+From PromisingLib Require Import Basic.
+From PromisingLib Require Import Axioms.
+From PromisingLib Require Import Language.
+From PromisingLib Require Import Event.
+From PromisingLib Require Import Loc.
+
+From PromisingIR Require Import Time.
+From PromisingIR Require Import View.
+From PromisingIR Require Import BoolMap.
+From PromisingIR Require Import Promises.
+From PromisingIR Require Import Cell.
+From PromisingIR Require Import Memory.
+From PromisingIR Require Import TView.
+From PromisingIR Require Import Global.
+From PromisingIR Require Import Local.
+From PromisingIR Require Import Thread.
+From PromisingIR Require Import Configuration.
+
+Require Import PromisingArch.lib.Basic.
+Require Import PromisingArch.lib.Order.
+Require Import PromisingArch.lib.Time.
+Require Import PromisingArch.lib.Lang.
+
+Require Import PromisingArch.promising.Promising.
+Require Import PromisingArch.mapping.RMWLang.
+Require Import PromisingArch.mapping.RMWPromising.
+Require Import PromisingArch.mapping.PSLang.
+Require Import PromisingArch.mapping.PStoRMWUtils.
+Require Import PromisingArch.mapping.PStoRMWDef.
+Require Import PromisingArch.mapping.PStoRMWThread.
+
+Set Implicit Arguments.
+Set Nested Proofs Allowed.
+
+
+Module PStoRMWTerminal.
+  Import PStoRMWThread.
+
+  Lemma sim_state_is_terminal
+        st_ps st_arm
+        (SIM: sim_state st_ps st_arm):
+    Language.is_terminal lang_ps st_ps <-> RMWState.is_terminal st_arm.
+  Proof.
+    inv SIM.
+    destruct st_ps, st_arm; ss. subst.
+    unfold Language.is_terminal, RMWState.is_terminal. s.
+    unfold State.is_terminal. s.
+    split; i; subst; ss.
+    destruct stmts; ss.
+  Qed.
+
+  (* TODO: move *)
+
+  Lemma promises_bot_spec p: Promises.le bot p.
+  Proof.
+    ii. rewrite Promises.lookup_bot in H. ss.
+  Qed.
+
+  Lemma sim_memory_is_terminal
+        tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
+        (SIM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
+        (SOUND: Promises.sound tid lc_arm.(Local.promises) mem_arm)
+        (N: n = length mem_arm):
+    PSLocal.is_terminal lc_ps <-> lc_arm.(Local.promises) = bot.
+  Proof.
+    inv SIM. split; i.
+    - inv H. apply Promises.le_antisym; try apply promises_bot_spec.
+      ii. r in H.
+      exploit PRM_SOUND; eauto.
+      rewrite PROMISES. i. des.
+      exploit PROMISED_PS; ss.
+      exploit SOUND; eauto. i. des.
+      unfold Memory.get_msg in GET.
+      destruct i; ss.
+      apply nth_error_some in GET.
+      unfold le. nia.
+    - econs. apply BoolMap.antisym; try apply BoolMap.bot_spec.
+      ii. exploit PRM_COMPLETE; eauto.
+      rewrite H. i. des.
+      rewrite Promises.lookup_bot in PROMISED_ARM. ss.
+  Qed.
+
+  Lemma sim_thread_exec_terminal
+        tid n th1_ps eu
+        (SIM1: sim_thread_exec tid n true th1_ps eu)
+        (N: n = length eu.(RMWExecUnit.mem))
+        (SC1: forall loc, PSTime.le (th1_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n))
+        (LC_WF1_PS: PSLocal.wf (PSThread.local th1_ps) (PSThread.global th1_ps))
+        (GL_WF1_PS: PSGlobal.wf (PSThread.global th1_ps))
+        (WF_ARM: RMWExecUnit.wf tid eu)
+        (RMW_WF_ARM: RMWLocal.wf tid (RMWExecUnit.local eu) (RMWExecUnit.mem eu)):
+    exists th2_ps,
+      (<<STEPS_PS: rtc (@PSThread.tau_step _) th1_ps th2_ps>>) /\
+      ((<<SIM2: sim_thread_exec tid n true th2_ps eu>>) /\
+       (<<SC2: forall loc, PSTime.le (th2_ps.(PSThread.global).(PSGlobal.sc) loc) (ntt n)>> /\
+       (<<TERMINAL_ST: Language.is_terminal _ th2_ps.(PSThread.state)>>) /\
+       (<<TERMINAL_LC: PSLocal.is_terminal th2_ps.(PSThread.local)>>)) \/
+       exists e_ps th3_ps,
+         (<<STEP_PS: PSThread.step e_ps th2_ps th3_ps>>) /\
+         (<<FAILURE: ThreadEvent.get_machine_event e_ps = MachineEvent.failure>>)).
+  Proof.
+    inv SIM1.
+    exploit (RMWExecUnit.rtc_state_step_wf (A:=unit)); try exact STEPS1; eauto. intro WF1_ARM.
+    exploit (RMWExecUnit.rtc_state_step_wf (A:=unit));
+      try eapply rtc_mon; try exact STEPS2;
+      try apply RMWExecUnit.dmbsy_over_state_step; eauto. intro WF2_ARM.
+    exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. i.
+    exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
+      try eapply rtc_mon; try exact STEPS2;
+      try apply RMWExecUnit.dmbsy_over_state_step; eauto. i.
+    exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit)); try exact STEPS1; eauto. intro RMW_WF1_ARM.
+    exploit (rtc_dmbsy_over_length_non_dmbsy (A:=unit)); try exact STEPS2; eauto; i.
+    { rewrite x0. nia. }
+    exploit sim_thread_rtc_step;
+      try exact SIM_THREAD;
+      try eapply rtc_mon; try exact x1;
+      try apply RMWExecUnit.non_dmbsy_dmbsy_exact; eauto.
+    { rewrite <- x0, <- x1.
+      inv WF2_ARM. inv LOCAL. ss.
+    }
+    { ii. rewrite PROMISES in *.
+      rewrite Promises.lookup_bot in *. ss.
+    }
+    i. des; [|esplits; eauto].
+    esplits; eauto. left. splits; ss.
+    { econs.
+      - etrans; [exact STEPS1|].
+        eapply rtc_mon; try eapply RMWExecUnit.state_step_pf_none.
+        eapply rtc_mon; try eapply RMWExecUnit.non_dmbsy_state_step.
+        exact x2.
+      - ss.
+      - refl.
+      - eauto.
+      - ss.
+      - ss.
+    }
+    { inv SIM2. erewrite sim_state_is_terminal; eauto. }
+    { inv SIM2. erewrite sim_memory_is_terminal; eauto; try congr.
+      exploit (RMWExecUnit.rtc_state_step_rmw_wf (A:=unit));
+        try eapply rtc_mon; try exact x2;
+        try apply RMWExecUnit.non_dmbsy_state_step; ss. i.
+      apply x3.
+    }
+  Qed.
+End PStoRMWTerminal.

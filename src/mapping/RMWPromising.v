@@ -590,6 +590,15 @@ Section RMWExecUnit.
   #[local]
   Hint Constructors state_step_dmbsy_over: core.
 
+  Variant state_step_non_dmbsy (n: option Time.t) (tid:Id.t) (eu1 eu2:t): Prop :=
+  | state_step_non_dmbsy_intro
+      e
+      (STEP: state_step0 n tid e e eu1 eu2)
+      (DMBSY: ~ is_dmbsy e)
+  .
+  #[local]
+  Hint Constructors state_step_non_dmbsy: core.
+
   Lemma state_step0_pf_none n:
     state_step0 n <5= state_step0 None.
   Proof.
@@ -692,6 +701,12 @@ Section RMWExecUnit.
     i. inv PR. econs. eauto.
   Qed.
 
+  Lemma non_dmbsy_state_step:
+    state_step_non_dmbsy <4= state_step.
+  Proof.
+    i. inv PR. econs. eauto.
+  Qed.
+
   Lemma dmbsy_dmbsy_exact:
     state_step_dmbsy <5= state_step_dmbsy_exact.
   Proof.
@@ -703,6 +718,12 @@ Section RMWExecUnit.
   Proof.
     i. inv PR. econs; eauto.
     i. apply DMBSY in H1. subst. refl.
+  Qed.
+
+  Lemma non_dmbsy_dmbsy_exact n sc:
+    state_step_non_dmbsy n <3= state_step_dmbsy_exact n sc.
+  Proof.
+    i. inv PR. econs; eauto. ss.
   Qed.
 
   Lemma dmbsy_over_sc_mon
@@ -813,6 +834,16 @@ Section RMWExecUnit.
     wf tid eu2.
   Proof.
     inv STEP. eapply state_step0_wf; eauto. refl.
+  Qed.
+
+  Lemma rtc_state_step_wf
+        n tid eu1 eu2
+        (STEP: rtc (state_step n tid) eu1 eu2)
+        (WF: wf tid eu1):
+    wf tid eu2.
+  Proof.
+    induction STEP; ss.
+    eauto using state_step_wf.
   Qed.
 
   Lemma state_step_dmbsy_wf

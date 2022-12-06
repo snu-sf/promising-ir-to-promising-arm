@@ -1584,5 +1584,6 @@ Module PStoRMWThread.
         (SC: sc = if after_sc then S n else n)
         (STEPS2: rtc (RMWExecUnit.state_step_dmbsy_over (Some n) sc tid) eu1 eu2)
         (PROMISES: eu2.(RMWExecUnit.local).(Local.promises) = bot)
+        (STATE: RMWState.is_terminal eu2.(RMWExecUnit.state))
   .
 End PStoRMWThread.

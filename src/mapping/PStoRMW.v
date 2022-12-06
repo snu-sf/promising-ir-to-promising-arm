@@ -117,6 +117,7 @@ Module PStoRMW.
     - refl.
     - eauto.
     - ss.
+    - ss.
   Qed.
 
   Lemma sim_memory_future
@@ -584,6 +585,7 @@ Module PStoRMW.
           exploit (fulfill_step_state_step0_pln (A:=unit)); eauto. i. des.
           econs; eauto. ss.
         - ss.
+        - ss.
       }
 
       destruct (th1_ps.(PSThread.local).(PSLocal.promises) loc_ps) eqn:PRM_PS.
@@ -703,6 +705,7 @@ Module PStoRMW.
       - refl.
       - eauto.
       - ss.
+      - ss.
     }
   Qed.
 
@@ -775,7 +778,7 @@ Module PStoRMW.
       clear DISJOINT THREADS PROMISES. intro DISJOINT. symmetry in DISJOINT.
       exploit PSThread.rtc_tau_step_disjoint;
         try exact STEPS_PS; try exact DISJOINT; ss. i. des.
-      inv SIM2. inv SIM_THREAD. clear eu2 STEPS2 PROMISES SIM_STATE SIM_TVIEW.
+      inv SIM2. inv SIM_THREAD. clear eu2 STEPS2 PROMISES STATE SIM_STATE SIM_TVIEW.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. s. i.
       exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS0. s. i.
       rewrite x0, x1 in *. clear x0 x1.
@@ -801,6 +804,7 @@ Module PStoRMW.
         inv STEP_FULFILL. i. rewrite GET_ARM in *. congr.
       + econs 5; eauto.
       + econs 6; eauto.
+    - ss.
   Qed.
 
   Lemma sim_length
@@ -846,13 +850,14 @@ Module PStoRMW.
         (COMPILE: ps_to_rmw_program prog_ps prog_arm)
         (PROMISE_STEPS: rtc (RMWMachine.step RMWExecUnit.promise_step) (RMWMachine.init prog_arm) m1)
         (EXEC: RMWMachine.state_exec m1 m)
-        (NOPROMISE: RMWMachine.no_promise m):
+        (TERMINAL: RMWMachine.is_terminal m):
     exists c1,
       (<<STEPS_PS: rtc PSConfiguration.tau_step
                        (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c1>>) /\
       (<<SIM: sim 0 false c1 m1>>).
   Proof.
     assert (LOCS: ps_locations_only (RMWMachine.mem m1)) by admit.
+    inv TERMINAL.
     exploit init_sim_init; eauto. intro SIM_INIT.
     exploit sim_init_rtc_promise_step; try exact PROMISE_STEPS; eauto.
     { apply PSConfiguration.init_wf. }
@@ -917,6 +922,9 @@ Module PStoRMW.
     - eapply rtc_mon; try exact REL. i. inv H2.
       econs; [apply RMWExecUnit.state_step0_pf_none_0; eauto|].
       i. unfold le. nia.
-    - destruct b. ss. inv NOPROMISE. eauto.
+    - destruct b. ss.
+      exploit TERMINAL0; eauto. i. des. ss.
+    - destruct b. ss.
+      exploit TERMINAL0; eauto. i. des. ss.
   Admitted.
 End PStoRMW.
