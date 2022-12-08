@@ -617,8 +617,6 @@ Section RMWUtils.
 End RMWUtils.
 
 
-(* TODO: move to PS *)
-
 Lemma reorder_read_cancel
       lc1 gl1 loc1 to1 val released ord lc2
       loc2 from2 to2 lc3 gl3
@@ -650,26 +648,4 @@ Proof.
     econs. rewrite <- EVENT.
     econs; eauto.
   - inv x0. rewrite IdentMap.gsident; ss. splits. refl.
-Qed.
-
-Lemma rtc_all_step_future
-      c1 c2
-      (WF1: PSConfiguration.wf c1)
-      (STEPS: rtc PSConfiguration.all_step c1 c2):
-  (<<WF2: PSConfiguration.wf c2>>).
-Proof.
-  induction STEPS; ss.
-  apply IHSTEPS. inv H.
-  exploit PSConfiguration.step_future; eauto. i. des. ss.
-Qed.
-
-Lemma rtc_tau_step_future
-      c1 c2
-      (WF1: PSConfiguration.wf c1)
-      (STEPS: rtc PSConfiguration.tau_step c1 c2):
-  (<<WF2: PSConfiguration.wf c2>>).
-Proof.
-  induction STEPS; ss.
-  apply IHSTEPS. inv H.
-  exploit PSConfiguration.step_future; eauto. i. des. ss.
 Qed.

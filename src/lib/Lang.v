@@ -210,6 +210,14 @@ Section RMap.
            | [|- context[if ?c then _ else _]] => destruct c
            end; ss.
   Qed.
+
+  Lemma add_eq
+        r1 r2 v rmap
+        (REG: r1 = r2):
+    RMap.find r1 (RMap.add r2 v rmap) = v.
+  Proof.
+    rewrite add_o. condtac; ss.
+  Qed.
 End RMap.
 End RMap.
 

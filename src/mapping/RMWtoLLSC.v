@@ -518,16 +518,6 @@ Proof.
    ss.
 Qed.
 
-(* TODO: move *)
-
-Lemma add_eq
-      A `{_: orderC A} r1 r2 v (rmap: RMap.t (A:=A))
-      (REG: r1 = r2):
-  RMap.find r1 (RMap.add r2 v rmap) = v.
-Proof.
-  rewrite RMap.add_o. condtac; ss.
-Qed.
-
 Lemma fold_right_app
       A (l1 l2: list (list A)):
   fold_right (@List.app _) [] l1 ++ fold_right (@List.app _) [] l2 =
@@ -811,7 +801,7 @@ Section RMWtoLLSC.
         i. destruct eu2_tgt as [[]].
         inv STEP_TGT. inv STEP0. ss. subst.
         inv STATE. inv LOCAL0; inv EVENT. inv LC. ss.
-        repeat rewrite add_eq; ss.
+        repeat rewrite RMap.add_eq; ss.
         replace (join (Local.vcap local) bot) with (Local.vcap local); cycle 1.
         { rewrite bot_join; ss. apply View.order. }
         esplits; try refl. left.

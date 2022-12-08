@@ -59,13 +59,6 @@ Module PStoRMWTerminal.
     destruct stmts; ss.
   Qed.
 
-  (* TODO: move *)
-
-  Lemma promises_bot_spec p: Promises.le bot p.
-  Proof.
-    ii. rewrite Promises.lookup_bot in H. ss.
-  Qed.
-
   Lemma sim_memory_is_terminal
         tid n lc_ps gprm_ps mem_ps lc_arm mem_arm
         (SIM: sim_memory tid n lc_ps gprm_ps mem_ps lc_arm mem_arm)
@@ -74,7 +67,7 @@ Module PStoRMWTerminal.
     PSLocal.is_terminal lc_ps <-> lc_arm.(Local.promises) = bot.
   Proof.
     inv SIM. split; i.
-    - inv H. apply Promises.le_antisym; try apply promises_bot_spec.
+    - inv H. apply Promises.le_antisym; try apply Promises.bot_spec.
       ii. r in H.
       exploit PRM_SOUND; eauto.
       rewrite PROMISES. i. des.

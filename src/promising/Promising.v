@@ -781,6 +781,11 @@ Module Promises.
     ii. auto.
   Qed.
 
+  Lemma bot_spec p: le bot p.
+  Proof.
+    ii. rewrite lookup_bot in H. ss.
+  Qed.
+
   Lemma le_antisym
         p1 p2
         (LE1: le p1 p2)

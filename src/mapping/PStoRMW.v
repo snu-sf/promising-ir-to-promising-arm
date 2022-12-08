@@ -44,7 +44,6 @@ Require Import PromisingArch.mapping.PStoRMWConsistent.
 Require Import PromisingArch.mapping.PStoRMWTerminal.
 
 Set Implicit Arguments.
-Set Nested Proofs Allowed.
 
 
 Module PStoRMW.
@@ -848,9 +847,9 @@ Module PStoRMW.
         with (length m.(RMWMachine.mem) - S k) by nia. ss.
     }
     exploit sim_sc; eauto. i. des; [|esplits; eauto].
-    exploit rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
+    exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS; eauto. i. des.
     exploit sim_S; try exact SIM2; eauto; try nia. i. des.
-    - exploit rtc_tau_step_future; try exact STEPS_PS0; eauto. i. des.
+    - exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS0; eauto. i. des.
       replace (S (length (RMWMachine.mem m) - S k))
         with (length (RMWMachine.mem m) - k) in * by nia.
       exploit IHk; try exact SIM0; eauto; try nia. i. des.
