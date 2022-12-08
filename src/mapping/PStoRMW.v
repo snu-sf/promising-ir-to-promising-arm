@@ -54,7 +54,7 @@ Module PStoRMW.
   Import PStoRMWTerminal.
 
   Variant sim_thread_sl (tid: Ident.t) (n: Time.t) (after_sc: bool)
-    (gl_ps: PSGlobal.t) (mem_arm: Memory.t):
+    (gl_ps: PSGlobal.t) (mem_arm mem_arm_final: Memory.t):
     forall (sl_ps: {lang: language & Language.state lang} * PSLocal.t)
            (sl_arm sl_arm_final: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
     | sim_thread_sl_intro
@@ -62,8 +62,8 @@ Module PStoRMW.
         (SIM_THREAD: sim_thread_exec tid n after_sc
                                      (PSThread.mk _ st_ps lc_ps gl_ps)
                                      (RMWExecUnit.mk st_arm lc_arm mem_arm)
-                                     (RMWExecUnit.mk st_arm_final lc_arm_final mem_arm)):
-      sim_thread_sl tid n after_sc gl_ps mem_arm
+                                     (RMWExecUnit.mk st_arm_final lc_arm_final mem_arm_final)):
+      sim_thread_sl tid n after_sc gl_ps mem_arm mem_arm_final
         (existT _ lang_ps st_ps, lc_ps) (st_arm, lc_arm) (st_arm_final, lc_arm_final)
   .
 
@@ -72,7 +72,7 @@ Module PStoRMW.
         (SIM_THREADS:
           forall tid,
             opt_rel3
-              (sim_thread_sl tid n after_sc c.(PSConfiguration.global) m.(RMWMachine.mem))
+              (sim_thread_sl tid n after_sc c.(PSConfiguration.global) m.(RMWMachine.mem) m_final.(RMWMachine.mem))
               (IdentMap.find tid c.(PSConfiguration.threads))
               (IdMap.find tid m.(RMWMachine.tpool))
               (IdMap.find tid m_final.(RMWMachine.tpool)))
@@ -183,13 +183,13 @@ Module PStoRMW.
     assert (exists tids,
                (<<IN: forall tid (IN: List.In tid tids),
                    opt_rel3
-                     (sim_thread_sl tid n false c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                     (sim_thread_sl tid n false c1.(PSConfiguration.global) m.(RMWMachine.mem) m_final.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
                      (IdMap.find tid m.(RMWMachine.tpool))
                      (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
                (<<OUT: forall tid (OUT: ~ List.In tid tids),
                    opt_rel3
-                     (sim_thread_sl tid n true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                     (sim_thread_sl tid n true c1.(PSConfiguration.global) m.(RMWMachine.mem) m_final.(RMWMachine.mem))
                      (IdentMap.find tid c1.(PSConfiguration.threads))
                      (IdMap.find tid m.(RMWMachine.tpool))
                      (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
@@ -941,7 +941,7 @@ Module PStoRMW.
         inv WF2. inv GL_WF. inv MEM_CLOSED.
         rewrite INHABITED in *. inv GET. apply PSTime.bot_spec.
     - refl.
-    - rewrite <- H6 in *. inv H7.
+    - rewrite <- H6 in *. inv H7. rewrite <- MEM.
       eapply rtc_mon; try exact REL. i. inv H2.
       econs; [apply RMWExecUnit.state_step0_pf_none_0; eauto|].
       i. unfold le. nia.
@@ -973,14 +973,16 @@ Module PStoRMW.
                (<<IN: forall tid (IN: List.In tid tids),
                    (<<SIM_THREAD:
                      opt_rel3
-                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true
+                          c1.(PSConfiguration.global) m.(RMWMachine.mem) m_final.(RMWMachine.mem))
                        (IdentMap.find tid c1.(PSConfiguration.threads))
                        (IdMap.find tid m.(RMWMachine.tpool))
                        (IdMap.find tid m_final.(RMWMachine.tpool))>>)>>) /\
                (<<OUT: forall tid (OUT: ~ List.In tid tids),
                    (<<SIM_THREAD:
                      opt_rel3
-                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true c1.(PSConfiguration.global) m.(RMWMachine.mem))
+                       (sim_thread_sl tid (length m.(RMWMachine.mem)) true
+                          c1.(PSConfiguration.global) m.(RMWMachine.mem) m_final.(RMWMachine.mem))
                        (IdentMap.find tid c1.(PSConfiguration.threads))
                        (IdMap.find tid m.(RMWMachine.tpool))
                        (IdMap.find tid m_final.(RMWMachine.tpool))>>) /\
@@ -1117,6 +1119,18 @@ Module PStoRMW.
     - esplits; [|right; eauto]. etrans; eauto.
   Qed.
 
+  Lemma terminal_promises
+        c
+        (TERMINAL: PSConfiguration.is_terminal c)
+        (WF: PSConfiguration.wf c):
+    c.(PSConfiguration.global).(Global.promises) = BoolMap.bot.
+  Proof.
+    apply BoolMap.antisym; try apply BoolMap.bot_spec. ii.
+    inv WF. inv WF0. exploit PROMISES; eauto. i. des.
+    exploit TERMINAL; eauto. i. des.
+    inv THREAD. rewrite PROMISES0 in *. ss.
+  Qed.
+
   Theorem ps_to_rmw
           prog_ps
           prog_arm m_final
@@ -1127,7 +1141,8 @@ Module PStoRMW.
       (<<STEPS: rtc Configuration.tau_step
                     (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c>>) /\
       ((<<SIM: exists m, sim (length m_final.(RMWMachine.mem)) true c m m_final>>) /\
-       (<<TERMINAL: Configuration.is_terminal c>>) \/
+       (<<TERMINAL: Configuration.is_terminal c>>) /\
+       (<<GPROMISES: c.(PSConfiguration.global).(Global.promises) = BoolMap.bot>>) \/
        exists tid c',
          (<<STEP: PSConfiguration.step MachineEvent.failure tid c c'>>)).
   Proof.
@@ -1145,7 +1160,6 @@ Module PStoRMW.
     hexploit RMWMachine.rtc_promise_step_promised_memory;
       try exact STEP1; try apply RMWMachine.init_promised_memory.
     intro PROMISED_MEMORY.
-
     exploit sim_length; try exact SIM; eauto; try nia. i. des; cycle 1.
     { esplits; [|right; eauto]. etrans; eauto. }
     exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS0; ss.
@@ -1153,6 +1167,9 @@ Module PStoRMW.
     exploit sim_terminal; try exact SIM2; eauto. i. des; cycle 1.
     { esplits; [|right; eauto]. repeat (etrans; eauto). }
     inv STEP2. rewrite <- MEM.
-    esplits; [|left; eauto]. repeat (etrans; eauto).
+    exploit PSConfiguration.rtc_tau_step_future; try exact STEPS_PS1; ss. i. des.
+    exploit terminal_promises; eauto. i.
+    esplits; [|left; eauto].
+    repeat (etrans; eauto).
   Qed.
 End PStoRMW.

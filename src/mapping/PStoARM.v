@@ -33,6 +33,7 @@ Require Import PromisingArch.lib.Time.
 Require Import PromisingArch.lib.Lang.
 
 Require Import PromisingArch.promising.Promising.
+Require Import PromisingArch.promising.PtoPF.
 Require Import PromisingArch.mapping.RMWLang.
 Require Import PromisingArch.mapping.RMWPromising.
 Require Import PromisingArch.mapping.PSLang.
@@ -45,14 +46,10 @@ Require Import PromisingArch.mapping.RMWtoLLSC.
 Set Implicit Arguments.
 
 
-Definition ps_to_arm_stmts (reg1 reg2: Id.t) (s: list Stmt.t): list stmtT :=
-  rmw_to_llsc_stmts reg1 reg2 (ps_to_rmw_stmts s).
-
 Definition ps_to_arm_program (prog_ps: ps_program) (prog_arm: program): Prop :=
-  forall tid, exists reg1 reg2,
-    option_rel
-      (fun stmts_ps stmts_arm => stmts_arm = ps_to_arm_stmts reg1 reg2 stmts_ps)
-      (IdentMap.find tid prog_ps) (IdMap.find tid prog_arm).
+  exists prog_rmw,
+    (<<PS_TO_RMW: ps_to_rmw_program prog_ps prog_rmw>>) /\
+    (<<RMW_TO_ARM: rmw_to_llsc_program prog_rmw prog_arm>>).
 
 Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
   | sim_memory_final_intro
@@ -72,15 +69,88 @@ Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
           (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
 .
 
+Lemma ps_to_rmw_sim_sim_memory_final
+      after_sc c m m_final
+      (PS_NONEMPTY: exists tid lang st_ps lc_ps,
+          IdentMap.find tid c.(PSConfiguration.threads) = Some (existT _ lang st_ps, lc_ps))
+      (GPROMISES: c.(PSConfiguration.global).(Global.promises) = BoolMap.bot)
+      (SIM: PStoRMW.sim (length m_final.(RMWMachine.mem)) after_sc c m m_final):
+  sim_memory_final c.(PSConfiguration.global).(Global.memory) m_final.(RMWMachine.mem).
+Proof.
+  des. inv SIM.
+  specialize (SIM_THREADS tid).
+  rewrite PS_NONEMPTY in *.
+  inv SIM_THREADS. inv REL.
+  inv SIM_THREAD. inv SIM_THREAD0. ss.
+  destruct c, global, m. ss. subst.
+  exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS1. s. i.
+  exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
+    try eapply rtc_mon; try exact STEPS2;
+    try apply RMWExecUnit.dmbsy_over_state_step. s. i.
+  rewrite x1, x0 in *. clear - SIM_MEM.
+  inv SIM_MEM. econs; i; eauto.
+  exploit MEM_SOUND; eauto. i. des.
+  unguardH x0.
+  des; subst; [|esplits; eauto].
+  exploit PROMISED; [|i; des; ss].
+  unfold Memory.get_msg in GET_ARM. destruct ts; ss.
+  apply nth_error_some in GET_ARM. unfold le. nia.
+Qed.
+
+Lemma step_non_empty
+      e tid c1 c2
+      (PS_NONEMPTY: exists tid lang st_ps lc_ps,
+          IdentMap.find tid c1.(PSConfiguration.threads) = Some (existT _ lang st_ps, lc_ps))
+      (STEP: Configuration.step e tid c1 c2):
+  exists tid lang st_ps lc_ps,
+    IdentMap.find tid c2.(PSConfiguration.threads) = Some (existT _ lang st_ps, lc_ps).
+Proof.
+  inv STEP. ss. exists tid.
+  rewrite IdentMap.gsspec. condtac; eauto.
+Qed.
+
+Lemma rtc_tau_step_non_empty
+      c1 c2
+      (PS_NONEMPTY: exists tid lang st_ps lc_ps,
+          IdentMap.find tid c1.(PSConfiguration.threads) = Some (existT _ lang st_ps, lc_ps))
+      (STEPS: rtc Configuration.tau_step c1 c2):
+  exists tid lang st_ps lc_ps,
+    IdentMap.find tid c2.(PSConfiguration.threads) = Some (existT _ lang st_ps, lc_ps).
+Proof.
+  revert PS_NONEMPTY.
+  induction STEPS; i; eauto.
+  apply IHSTEPS. inv H.
+  eapply step_non_empty; eauto.
+Qed.
+
 Theorem ps_to_arm
         prog_ps
         prog_arm m
+        (ARM: arch = armv8)
+        (PS_NONEMPTY: exists tid stmts, IdentMap.find tid prog_ps = Some stmts)
         (COMPILE: ps_to_arm_program prog_ps prog_arm)
-        (EXEC: Machine.exec prog_arm m):
+        (EXEC: Machine.exec prog_arm m)
+        (TERMINAL: Machine.is_terminal m):
   exists c,
-    (<<STEPS: rtc Configuration.all_step
+    (<<STEPS: rtc Configuration.tau_step
                   (Configuration.init (IdentMap.map (fun s => existT _ lang_ps s) prog_ps)) c>>) /\
-    (<<TERMINAL: Configuration.is_terminal c>>) /\
-    (<<MEMORY: sim_memory_final c.(Configuration.global).(Global.memory) m.(Machine.mem)>>).
+    ((<<TERMINAL: Configuration.is_terminal c>>) /\
+     (<<MEMORY: sim_memory_final c.(Configuration.global).(Global.memory) m.(Machine.mem)>>) \/
+     exists tid c',
+       (<<STEP: PSConfiguration.step MachineEvent.failure tid c c'>>)).
 Proof.
-Admitted.
+  unfold ps_to_arm_program in *. des.
+  apply promising_to_promising_pf in EXEC.
+  exploit RMWtoLLSC.rmw_to_llsc; eauto. i. des.
+  exploit PStoRMW.ps_to_rmw; eauto. i. des.
+  - esplits; try exact STEPS. left. split; ss.
+    rewrite <- MEMORY.
+    eapply ps_to_rmw_sim_sim_memory_final; eauto.
+    eapply rtc_tau_step_non_empty; try exact STEPS. ss.
+    exists tid. unfold Threads.init.
+    rewrite IdentMap.Facts.map_o.
+    rewrite IdentMap.Facts.map_o.
+    rewrite PS_NONEMPTY. ss.
+    exists lang_ps. esplits; eauto.
+  - esplits; try exact STEPS. right. eauto.
+Qed.

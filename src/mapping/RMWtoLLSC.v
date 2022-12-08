@@ -62,6 +62,49 @@ Section SIM_EU.
   Definition sim_eu := paco2 _sim_eu bot2.
 End SIM_EU.
 Arguments sim_eu [_] _ _.
+#[export] Hint Resolve sim_eu_monotone: paco.
+
+
+Lemma sim_eu_state_step
+      tid eu1_src eu1_tgt eu2_tgt
+      (SIM: @sim_eu tid eu1_src eu1_tgt)
+      (STEP_TGT: ExecUnit.state_step tid eu1_tgt eu2_tgt):
+  exists eu2_src,
+    (<<STEP_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
+    (<<SIM: @sim_eu tid eu2_src eu2_tgt>>).
+Proof.
+  punfold SIM. r in SIM. des.
+  exploit STEP; eauto. i. des.
+  esplits; eauto.
+  inv SIM; ss.
+Qed.
+
+Lemma sim_eu_rtc_state_step
+      tid eu1_src eu1_tgt eu2_tgt
+      (SIM: @sim_eu tid eu1_src eu1_tgt)
+      (STEPS_TGT: rtc (ExecUnit.state_step tid) eu1_tgt eu2_tgt):
+  exists eu2_src,
+    (<<STEP_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
+    (<<SIM: @sim_eu tid eu2_src eu2_tgt>>).
+Proof.
+  revert eu1_src SIM.
+  induction STEPS_TGT; i; eauto.
+  exploit sim_eu_state_step; try exact H; eauto. i. des.
+  exploit IHSTEPS_TGT; eauto. i. des.
+  esplits; [|eauto]. etrans; eauto.
+Qed.
+
+Lemma sim_eu_terminal
+      tid eu1_src eu1_tgt
+      (SIM: @sim_eu tid eu1_src eu1_tgt)
+      (TERMINAL_TGT: ExecUnit.is_terminal eu1_tgt):
+  exists eu2_src,
+    (<<STEP_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
+    (<<TERMINAL_SRC: RMWExecUnit.is_terminal eu2_src>>).
+Proof.
+  punfold SIM. r in SIM. des.
+  exploit TERMINAL; eauto. i. des. eauto.
+Qed.
 
 
 Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
@@ -95,12 +138,6 @@ Fixpoint rmw_to_llsc_stmt (tmp1 tmp2: Id.t) (stmt: rmw_stmtT): list stmtT :=
 Definition rmw_to_llsc_stmts (tmp1 tmp2: Id.t) (stmts: list rmw_stmtT): list stmtT :=
   List.fold_right (@List.app _) [] (List.map (rmw_to_llsc_stmt tmp1 tmp2) stmts).
 
-Definition rmw_to_llsc_program (p_src: rmw_program) (p_tgt: program): Prop :=
-  forall tid, exists tmp1 tmp2,
-    option_rel
-      (fun stmts_src stmts_tgt => stmts_tgt = rmw_to_llsc_stmts tmp1 tmp2 stmts_src)
-      (IdMap.find tid p_src) (IdMap.find tid p_tgt).
-
 Inductive fresh (regs: IdSet.t): forall (stmt: rmw_stmtT), Prop :=
 | fresh_instr
     i
@@ -118,6 +155,15 @@ Inductive fresh (regs: IdSet.t): forall (stmt: rmw_stmtT), Prop :=
     (FRESH_COND: IdSet.disjoint regs (regs_of_expr cond)):
   fresh regs (rmw_stmt_dowhile s cond)
 .
+
+Definition rmw_to_llsc_program (p_src: rmw_program) (p_tgt: program): Prop :=
+  forall tid, exists tmp1 tmp2,
+    option_rel
+      (fun stmts_src stmts_tgt =>
+         (<<TMP: ~ (tmp1 = tmp2)>>) /\
+         (<<FRESH: List.Forall (fresh (IdSet.add tmp2 (IdSet.singleton tmp1))) stmts_src>>) /\
+         (<<STMTS: stmts_tgt = rmw_to_llsc_stmts tmp1 tmp2 stmts_src>>))
+      (IdMap.find tid p_src) (IdMap.find tid p_tgt).
 
 
 Variant sim_val (v_src v_tgt: ValA.t (A:=View.t (A:=unit))): Prop :=
@@ -801,33 +847,289 @@ Section RMWtoLLSC.
       right. eapply CIH; eauto. congr.
     }
   Qed.
+
+
+  Variant sim_sl (tmp1 tmp2: Id.t):
+    forall (sl_src: RMWState.t (A:=View.t (A:=unit)) * Local.t (A:=unit))
+           (sl_tgt: State.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop :=
+    | sim_sl_intro
+        st_src lc_src
+        st_tgt lc_tgt
+        (TMP: tmp1 <> tmp2)
+        (FRESH: List.Forall (fresh (IdSet.add tmp2 (IdSet.singleton tmp1))) st_src.(RMWState.stmts))
+        (STMTS: st_tgt.(State.stmts) = rmw_to_llsc_stmts tmp1 tmp2 st_src.(RMWState.stmts))
+        (RMAP: sim_rmap (IdSet.add tmp2 (IdSet.singleton tmp1)) st_src.(RMWState.rmap) st_tgt.(State.rmap))
+        (LOCAL: sim_local lc_src lc_tgt)
+        (EXBANK: lc_src.(Local.exbank) = None):
+      sim_sl tmp1 tmp2 (st_src, lc_src) (st_tgt, lc_tgt)
+  .
+
+  Variant sim (m_src: RMWMachine.t) (m_tgt: Machine.t): Prop :=
+    | sim_machine_intro
+        (TPOOL: forall tid, exists tmp1 tmp2,
+            opt_rel (sim_sl tmp1 tmp2)
+              (IdMap.find tid (RMWMachine.tpool m_src))
+              (IdMap.find tid (Machine.tpool m_tgt)))
+        (MEMORY: RMWMachine.mem m_src = Machine.mem m_tgt)
+  .
+
+  Lemma sim_sl_sim_eu
+        tid tmp1 tmp2
+        sl_src sl_tgt
+        mem_src mem_tgt
+        (SIM: sim_sl tmp1 tmp2 sl_src sl_tgt)
+        (MEM: mem_src = mem_tgt):
+    @sim_eu tid
+            (RMWExecUnit.mk (fst sl_src) (snd sl_src) mem_src)
+            (ExecUnit.mk (fst sl_tgt) (snd sl_tgt) mem_tgt).
+  Proof.
+    inv SIM. s.
+    destruct st_src, st_tgt. ss.
+    eapply rmw_to_llsc_sim_eu; eauto.
+  Qed.
+
+  Lemma init_sim
+        prog_src prog_tgt
+        (COMPILE: rmw_to_llsc_program prog_src prog_tgt):
+    sim (RMWMachine.init prog_src) (Machine.init prog_tgt).
+  Proof.
+    econs; ss. i.
+    specialize (COMPILE tid). des.
+    exists tmp1, tmp2.
+    do 2 rewrite IdMap.map_spec.
+    destruct (IdMap.find tid prog_src) eqn:FIND_SRC,
+        (IdMap.find tid prog_tgt) eqn:FIND_TGT; ss. des.
+    econs. econs; ss; try refl.
+  Qed.
+
+  Lemma sim_local_promise
+        lc1_src mem1_src
+        lc1_tgt mem1_tgt
+        loc val ts tid
+        lc2_tgt mem2_tgt
+        (SIM1: sim_local lc1_src lc1_tgt)
+        (MEM1: mem1_src = mem1_tgt)
+        (STEP_TGT: Local.promise loc val ts tid lc1_tgt mem1_tgt lc2_tgt mem2_tgt):
+    exists lc2_src mem2_src,
+      (<<STEP_SRC: Local.promise loc val ts tid lc1_src mem1_src lc2_src mem2_src>>) /\
+      (<<SIM2: sim_local lc2_src lc2_tgt>>) /\
+      (<<MEM2: mem2_src = mem2_tgt>>).
+  Proof.
+    destruct lc1_src, lc1_tgt. inv SIM1. ss. subst.
+    inv STEP_TGT. ss.
+    esplits.
+    - econs; eauto.
+    - ss.
+    - ss.
+  Qed.
+
+  Lemma sim_sl_promise_step
+        tmp1 tmp2 tid
+        st1_src lc1_src mem1_src
+        st1_tgt lc1_tgt mem1_tgt
+        st2_tgt lc2_tgt mem2_tgt
+        (SIM1: sim_sl tmp1 tmp2 (st1_src, lc1_src) (st1_tgt, lc1_tgt))
+        (MEM1: mem1_src = mem1_tgt)
+        (STEP_TGT: ExecUnit.promise_step tid
+                     (ExecUnit.mk st1_tgt lc1_tgt mem1_tgt)
+                     (ExecUnit.mk st2_tgt lc2_tgt mem2_tgt)):
+    exists st2_src lc2_src mem2_src,
+      (<<STEP_SRC: RMWExecUnit.promise_step tid
+                     (RMWExecUnit.mk st1_src lc1_src mem1_src)
+                     (RMWExecUnit.mk st2_src lc2_src mem2_src)>>) /\
+      (<<SIM2: sim_sl tmp1 tmp2 (st2_src, lc2_src) (st2_tgt, lc2_tgt)>>) /\
+      (<<MEM2: mem2_src = mem2_tgt>>).
+  Proof.
+    inv SIM1. inv STEP_TGT. ss. subst.
+    exploit sim_local_promise; eauto. i. des. subst.
+    esplits.
+    - econs; s; eauto.
+    - econs; ss. inv STEP_SRC. ss.
+    - ss.
+  Qed.
+
+  Lemma sim_promise_step
+        m1_src m1_tgt m2_tgt
+        (SIM1: sim m1_src m1_tgt)
+        (STEP_TGT: Machine.step ExecUnit.promise_step m1_tgt m2_tgt):
+    exists m2_src,
+      (<<STEP_SRC: RMWMachine.step RMWExecUnit.promise_step m1_src m2_src>>) /\
+      (<<SIM2: sim m2_src m2_tgt>>).
+  Proof.
+    destruct m1_src as [tpool1_src mem1_src],
+        m1_tgt as [tpool1_tgt mem1_tgt].
+    inv SIM1. inv STEP_TGT. ss.
+    exploit TPOOL. i. des.
+    rewrite FIND in x0. inv x0.
+    destruct a as [st1_src lc1_src].
+    symmetry in H0. rename H0 into FIND_SRC.
+    exploit sim_sl_promise_step; eauto. i. des.
+    eexists (RMWMachine.mk _ _).
+    esplits.
+    - econs; s; eauto.
+    - econs; ss. i.
+      rewrite TPOOL0.
+      do 2 rewrite IdMap.add_spec.
+      condtac; eauto.
+  Qed.
+
+  Lemma sim_rtc_promise_step
+        m1_src m1_tgt m2_tgt
+        (SIM1: sim m1_src m1_tgt)
+        (STEP_TGT: rtc (Machine.step ExecUnit.promise_step) m1_tgt m2_tgt):
+    exists m2_src,
+      (<<STEP_SRC: rtc (RMWMachine.step RMWExecUnit.promise_step) m1_src m2_src>>) /\
+      (<<SIM2: sim m2_src m2_tgt>>).
+  Proof.
+    revert m1_src SIM1.
+    induction STEP_TGT; i; eauto.
+    exploit sim_promise_step; eauto. i. des.
+    exploit IHSTEP_TGT; eauto. i. des.
+    esplits; [|eauto]. etrans; eauto.
+  Qed.
+
+  Lemma sim_eu_exec
+        tid eu1_src eu1_tgt eu2_tgt
+        (SIM: @sim_eu tid eu1_src eu1_tgt)
+        (STEPS_TGT: rtc (ExecUnit.state_step tid) eu1_tgt eu2_tgt)
+        (TERMINAL_ST: State.is_terminal eu2_tgt.(ExecUnit.state))
+        (TERMINAL_LC: eu2_tgt.(ExecUnit.local).(Local.promises) = bot):
+    exists eu2_src,
+      (<<STEPS_SRC: rtc (RMWExecUnit.state_step None tid) eu1_src eu2_src>>) /\
+      (<<TERMINAL_ST: RMWState.is_terminal eu2_src.(RMWExecUnit.state)>>) /\
+      (<<TERMINAL_LC: eu2_src.(RMWExecUnit.local).(Local.promises) = bot>>).
+  Proof.
+    exploit sim_eu_rtc_state_step; eauto. i. des.
+    punfold SIM0. inv SIM0. des.
+    exploit H; [econs; ss|]. i. des.
+    esplits; try apply TERMINAL_SRC.
+    etrans; eauto.
+  Qed.
+
+  Lemma sim_state_exec
+        m1_src m1_tgt m_tgt
+        (SIM: sim m1_src m1_tgt)
+        (EXEC_TGT: Machine.state_exec m1_tgt m_tgt)
+        (TERMINAL_TGT: Machine.is_terminal m_tgt):
+    exists m_src,
+      (<<EXEC_SRC: RMWMachine.state_exec m1_src m_src>>) /\
+      (<<TERMINAL_TGT: RMWMachine.is_terminal m_src>>) /\
+      (<<MEMORY: RMWMachine.mem m_src = Machine.mem m_tgt>>).
+  Proof.
+    inv SIM. inv EXEC_TGT.
+    assert (exists tids,
+               (<<IN: forall tid (IN: List.In tid tids),
+                   (<<SIM:
+                     exists tid1 tid2,
+                       opt_rel
+                         (sim_sl tid1 tid2)
+                         (IdMap.find tid m1_src.(RMWMachine.tpool))
+                         (IdMap.find tid m1_tgt.(Machine.tpool))>>) /\
+                   (<<EXEC_TGT:
+                     opt_rel
+                       (fun sl1 sl2 =>
+                          rtc (ExecUnit.state_step tid)
+                            (ExecUnit.mk (fst sl1) (snd sl1) m1_tgt.(Machine.mem))
+                            (ExecUnit.mk (fst sl2) (snd sl2) m1_tgt.(Machine.mem)))
+                       (IdMap.find tid m1_tgt.(Machine.tpool))
+                       (IdMap.find tid m_tgt.(Machine.tpool))>>)>>) /\
+               (<<OUT: forall tid (OUT: ~ List.In tid tids),
+                   (<<TERMINAL: forall st_src lc_src
+                                  (FIND: IdMap.find tid m1_src.(RMWMachine.tpool) = Some (st_src, lc_src)),
+                       (<<TERMINAL_ST: RMWState.is_terminal st_src>>) /\
+                       (<<TERMINAL_LC: lc_src.(Local.promises) = bot>>)>>)>>) /\
+               (<<NODUP: List.NoDup tids>>)).
+    { exists (List.map fst (IdMap.elements m1_src.(RMWMachine.tpool))).
+      splits; ss.
+      - ii. exfalso. apply OUT.
+        setoid_rewrite IdMap.elements_spec in FIND.
+        revert FIND. clear.
+        generalize (IdMap.elements m1_src.(RMWMachine.tpool)). i.
+        induction l; ss.
+        destruct a. des_ifs; auto.
+      - specialize (IdMap.elements_3w m1_src.(RMWMachine.tpool)). clear.
+        generalize (IdMap.elements m1_src.(RMWMachine.tpool)). i.
+        induction l; ss.
+        inv H. econs; eauto.
+        clear - H2. ii.
+        induction l; ss. des; eauto.
+        destruct a0, a; ss. subst.
+        apply H2. left. ss.
+    }
+    des.
+    clear TPOOL TPOOL0.
+    revert m1_src m1_tgt IN OUT NODUP MEMORY MEM.
+
+    induction tids; i.
+    { exists m1_src. splits.
+      - econs; ss. ii.
+        destruct (IdMap.find id (RMWMachine.tpool m1_src)); ss.
+        econs. refl.
+      - econs. i. eapply OUT; eauto.
+      - congr.
+    }
+    exploit IN; [left; refl|]. i. des.
+    inv SIM.
+    { eapply IHtids; eauto; ii.
+      - eapply IN. right. ss.
+      - destruct (Id.eq_dec tid a).
+        + subst. congr.
+        + eapply OUT; eauto. ii. inv H1; ss.
+      - inv NODUP. ss.
+    }
+    destruct a0 as [st1_src lc1_src], b as [st1_tgt lc1_tgt].
+    exploit sim_sl_sim_eu; try exact REL; try exact MEMORY. s. intro SIM_EU.
+    rewrite <- H in *. inv EXEC_TGT.
+    destruct b as [st2_tgt lc2_tgt]. ss.
+    inv TERMINAL_TGT. exploit TERMINAL; eauto. i. des.
+    exploit sim_eu_exec; try exact REL0; eauto. i. des.
+    destruct eu2_src as [st2_src lc2_src mem2_src].
+    exploit (RMWExecUnit.rtc_state_step_memory (A:=unit)); try exact STEPS_SRC. s. i. subst.
+    destruct m1_src as [tpool1_src mem1_src],
+        m1_tgt as [tpool1_tgt mem1_tgt]. ss.
+    exploit (IHtids
+              (RMWMachine.mk (IdMap.add a (st2_src, lc2_src) tpool1_src) mem1_src)
+              (Machine.mk (IdMap.add a (st2_tgt, lc2_tgt) tpool1_tgt) mem1_tgt)); ss.
+    { clear IHtids. i.
+      repeat rewrite IdMap.add_spec.
+      condtac; ss; eauto.
+      r in e. subst. inv NODUP. ss.
+    }
+    { clear IHtids. ii. revert FIND.
+      rewrite IdMap.add_spec. condtac; i.
+      - r in e. inv FIND. auto.
+      - eapply OUT; eauto. ii. des; ss. congr.
+    }
+    { inv NODUP. ss. }
+    i. des. esplits; eauto.
+    inv EXEC_SRC. econs; ss.
+    ii. specialize (TPOOL id). inv TPOOL.
+    - revert H2. rewrite IdMap.add_spec. condtac; ss. i.
+      rewrite <- H2. ss.
+    - revert H2. rewrite IdMap.add_spec. condtac; ss; i.
+      + r in e. subst. inv H2.
+        rewrite <- H0. econs. ss. etrans; eauto.
+      + rewrite <- H2. econs. ss.
+  Qed.
+
+  Theorem rmw_to_llsc
+          prog_src prog_tgt m_tgt
+          (COMPILE: rmw_to_llsc_program prog_src prog_tgt)
+          (EXEC_TGT: Machine.pf_exec prog_tgt m_tgt)
+          (TERMINAL_TGT: Machine.is_terminal m_tgt):
+    exists m_src,
+      (<<EXEC_SRC: RMWMachine.pf_exec prog_src m_src>>) /\
+      (<<TERMINAL_TGT: RMWMachine.is_terminal m_src>>) /\
+      (<<MEMORY: RMWMachine.mem m_src = Machine.mem m_tgt>>).
+  Proof.
+    inv EXEC_TGT.
+    exploit init_sim; eauto. intro SIM.
+    exploit sim_rtc_promise_step; eauto. i. des.
+    exploit sim_state_exec; eauto. i. des.
+    esplits.
+    - econs; eauto. inv TERMINAL_TGT0.
+      econs. i. eapply TERMINAL; eauto.
+    - ss.
+    - ss.
+  Qed.
 End RMWtoLLSC.
-
-
-(* Variant sim_sl (tmp1 tmp2: Id.t): *)
-(*   forall (sl_src sl_tgt: State.t (A:=View.t (A:=unit)) * Local.t (A:=unit)), Prop := *)
-(* | sim_sl_intro *)
-(*     stmts_src rmap_src lc_src *)
-(*     stmts_tgt rmap_tgt lc_tgt *)
-(*     (STMTS: stmts_tgt = rmw_to_llsc_stmts tmp1 tmp2 stmts_src) *)
-(*     (RMAP: sim_rmap (IdSet.add tmp2 (IdSet.singleton tmp1)) rmap_src rmap_tgt) *)
-(*     (LOCAL: sim_local lc_src lc_tgt): *)
-(*   sim_sl tmp1 tmp2 (State.mk stmts_src rmap_src, lc_src) (State.mk stmts_tgt rmap_tgt, lc_tgt) *)
-(* . *)
-
-(* Variant sim_machine (m_src m_tgt: Machine.t): Prop := *)
-(* | sim_machine_intro *)
-(*     (TPOOL: forall tid, exists tmp1 tmp2, *)
-(*         option_rel (sim_sl tmp1 tmp2) *)
-(*                    (IdMap.find tid (Machine.tpool m_src)) *)
-(*                    (IdMap.find tid (Machine.tpool m_tgt))) *)
-(*     (MEMORY: Machine.mem m_src = Machine.mem m_tgt) *)
-(* . *)
-
-
-(* Theorem rmw_to_llsc_sim *)
-(*         prog_src prog_tgt *)
-(*         (PROGRAM: rmw_to_llsc_program prog_src prog_tgt): *)
-(*   @sim sim_machine (Machine.init prog_src) (Machine.init prog_tgt). *)
-(* Proof. *)
-(* Admitted. *)
