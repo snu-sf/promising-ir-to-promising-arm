@@ -52,9 +52,9 @@ Module Instr.
   Variant t: Type :=
     | skip
     | assign (reg:Id.t) (e:Expr.t)
-    | load (reg:Id.t) (loc:Loc.Loc.t) (ord:Ordering.t)
-    | store (loc:Loc.Loc.t) (e:Expr.t) (ord:Ordering.t)
-    | fadd (reg:Id.t) (loc:Loc.Loc.t) (addendum:Expr.t) (ordr ordw:Ordering.t)
+    | load (reg:Id.t) (eloc:Expr.t) (ord:Ordering.t)
+    | store (eloc:Expr.t) (e:Expr.t) (ord:Ordering.t)
+    | fadd (reg:Id.t) (eloc:Expr.t) (addendum:Expr.t) (ordr ordw:Ordering.t)
     | fence (ordr ordw:Ordering.t)
   .
   #[global]
@@ -101,27 +101,54 @@ Module RegFile.
         (Instr.assign lhs rhs)
         ProgramEvent.silent
         (IdentFun.add lhs (eval_expr rf rhs) rf)
-  | eval_load
-      rf reg loc ord val:
+  | eval_load_undef
+      rf reg eloc ord
+      (ELOC: eval_expr rf eloc = Const.undef):
       eval_instr
         rf
-        (Instr.load reg loc ord)
+        (Instr.load reg eloc ord)
+        ProgramEvent.failure
+        rf
+  | eval_load
+      rf reg eloc loc ord val
+      (ELOC: eval_expr rf eloc = Const.num loc):
+      eval_instr
+        rf
+        (Instr.load reg eloc ord)
         (ProgramEvent.read loc val ord)
         (IdentFun.add reg val rf)
-  | eval_store
-      rf loc e ord:
+  | eval_store_undef
+      rf eloc e ord
+      (ELOC: eval_expr rf eloc = Const.undef):
       eval_instr
         rf
-        (Instr.store loc e ord)
+        (Instr.store eloc e ord)
+        ProgramEvent.failure
+        rf
+  | eval_store
+      rf eloc loc e ord
+      (ELOC: eval_expr rf eloc = Const.num loc):
+      eval_instr
+        rf
+        (Instr.store eloc e ord)
         (ProgramEvent.write loc (eval_expr rf e) ord)
         rf
+  | eval_fadd_undef
+      rf reg eloc addendum ordr ordw
+      (ELOC: eval_expr rf eloc = Const.undef):
+    eval_instr
+      rf
+      (Instr.fadd reg eloc addendum ordr ordw)
+      ProgramEvent.failure
+      rf
   | eval_fadd
-      rf reg loc addendum ordr ordw
+      rf reg eloc loc addendum ordr ordw
       old new
+      (ELOC: eval_expr rf eloc = Const.num loc)
       (NEW: new = Const.add old (eval_expr rf addendum)):
     eval_instr
       rf
-      (Instr.fadd reg loc addendum ordr ordw)
+      (Instr.fadd reg eloc addendum ordr ordw)
       (ProgramEvent.update loc old new ordr ordw)
       (IdentFun.add reg old rf)
   | eval_fence
