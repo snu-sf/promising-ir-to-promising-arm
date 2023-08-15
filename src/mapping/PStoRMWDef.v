@@ -65,8 +65,6 @@ Definition ps_to_rmw_ordw (ord: Ordering.t): OrdW.t :=
     then OrdW.strong
     else OrdW.pln.
 
-Definition orr (a b: bool): bool := a || b.
-
 Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
   match i with
   | Instr.skip =>
