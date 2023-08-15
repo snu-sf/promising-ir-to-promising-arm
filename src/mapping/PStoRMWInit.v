@@ -9,23 +9,23 @@ Require Import Bool.
 From sflib Require Import sflib.
 From Paco Require Import paco.
 
-From PromisingLib Require Import Basic.
-From PromisingLib Require Import Axioms.
-From PromisingLib Require Import Language.
-From PromisingLib Require Import Event.
-From PromisingLib Require Import Loc.
+From PromisingFlat Require Import Basic.
+From PromisingFlat Require Import Axioms.
+From PromisingFlat Require Import Language.
+From PromisingFlat Require Import Event.
+From PromisingFlat Require Import Loc.
 
-From PromisingIR Require Import Time.
-From PromisingIR Require Import View.
-From PromisingIR Require Import BoolMap.
-From PromisingIR Require Import Promises.
-From PromisingIR Require Import Cell.
-From PromisingIR Require Import Memory.
-From PromisingIR Require Import TView.
-From PromisingIR Require Import Global.
-From PromisingIR Require Import Local.
-From PromisingIR Require Import Thread.
-From PromisingIR Require Import Configuration.
+From PromisingFlat Require Import Time.
+From PromisingFlat Require Import View.
+From PromisingFlat Require Import BoolMap.
+From PromisingFlat Require Import Promises.
+From PromisingFlat Require Import Cell.
+From PromisingFlat Require Import Memory.
+From PromisingFlat Require Import TView.
+From PromisingFlat Require Import Global.
+From PromisingFlat Require Import Local.
+From PromisingFlat Require Import Thread.
+From PromisingFlat Require Import Configuration.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.
@@ -51,7 +51,7 @@ Module PStoRMWInit.
         (MEM_SOUND: forall ts msg_arm
                            (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
           exists loc_ps from,
-            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+            (<<LOC: msg_arm.(Msg.loc) = loc_ps>>) /\
             (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.reserve)>>) /\
             (<<RESERVED: msg_arm.(Msg.tid) = tid ->
                          PSMemory.get loc_ps (ntt ts) rsv_ps = Some (from, Message.reserve)>>) /\
@@ -69,7 +69,7 @@ Module PStoRMWInit.
             (<<TO: to = ntt ts>>) /\
             (<<MSG_PS: msg_ps = Message.reserve>>) /\
             (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
-            (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
+            (<<LOC: msg_arm.(Msg.loc) = loc_ps>>))
   .
 
   Variant sim_thread_init (tid: Ident.t) (th_ps: PSThread.t lang_ps) (eu: RMWExecUnit.t (A:=unit)): Prop :=
@@ -109,7 +109,7 @@ Module PStoRMWInit.
 
   Definition ps_locations_only (mem: Memory.t): Prop :=
     forall ts msg_arm (GET: Memory.get_msg ts mem = Some msg_arm),
-    exists loc_ps, msg_arm.(Msg.loc) = Zpos loc_ps.
+    exists loc_ps, msg_arm.(Msg.loc) = loc_ps.
 
   Lemma promise_step_ps_locations_only
         tid (eu1 eu2: RMWExecUnit.t (A:=unit))
@@ -222,7 +222,7 @@ Module PStoRMWInit.
       rewrite Nat.sub_diag. ss.
     }
     s. i. des. subst.
-    specialize (Memory.get_latest (Zpos loc_ps) mem1_arm). i. des.
+    specialize (Memory.get_latest (loc_ps) mem1_arm). i. des.
     exploit (@PSMemory.add_exists mem1_ps loc_ps (ntt ts) (ntt (S (length mem1_arm))) Message.reserve).
     { i. inv SIM_MEM.
       destruct (TimeFacts.le_lt_dec to2 PSTime.bot).
@@ -235,7 +235,7 @@ Module PStoRMWInit.
       unfold Memory.get_msg in GET_ARM. destruct ts0; ss.
       exploit (H (S ts0)).
       { unfold Memory.read. ss. rewrite GET_ARM.
-        rewrite LOC. condtac; ss. congr.
+        condtac; ss. congr.
       }
       ii. inv LHS. inv RHS. ss.
       exploit TimeFacts.lt_le_lt; [exact FROM|exact TO0|]. i.
@@ -393,7 +393,7 @@ Module PStoRMWInit.
     match e with
     | RMWEvent.write _ vloc _
     | RMWEvent.fadd _ _ vloc _ _ =>
-        exists loc_ps, vloc.(ValA.val) = Zpos loc_ps
+        exists loc_ps, vloc.(ValA.val) = loc_ps
     | _ => True
     end.
 
@@ -404,9 +404,7 @@ Module PStoRMWInit.
     event_ps_locations_only e_arm.
   Proof.
     exploit sim_state_step; eauto. i. des.
-    inv EVENT; ss.
-    - rewrite LOC. eauto.
-    - rewrite LOC. eauto.
+    inv EVENT; ss; eauto.
   Qed.
 
   Lemma exec_ps_locations_only
@@ -422,7 +420,7 @@ Module PStoRMWInit.
       try exact PROMISE_STEPS;
       try apply RMWMachine.init_promised_memory.
     intro PROMISED_MEMORY.
-    ii. destruct (classic (forall loc_ps, msg_arm.(Msg.loc) <> Zpos loc_ps)); cycle 1.
+    ii. destruct (classic (forall loc_ps, msg_arm.(Msg.loc) <> loc_ps)); cycle 1.
     { eapply not_all_not_ex. ss. }
     exfalso.
     exploit PROMISED_MEMORY; eauto. i. des.

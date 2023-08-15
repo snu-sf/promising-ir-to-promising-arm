@@ -9,23 +9,23 @@ Require Import Bool.
 From sflib Require Import sflib.
 From Paco Require Import paco.
 
-From PromisingLib Require Import Basic.
-From PromisingLib Require Import Axioms.
-From PromisingLib Require Import Language.
-From PromisingLib Require Import Event.
-From PromisingLib Require Import Loc.
+From PromisingFlat Require Import Basic.
+From PromisingFlat Require Import Axioms.
+From PromisingFlat Require Import Language.
+From PromisingFlat Require Import Event.
+From PromisingFlat Require Import Loc.
 
-From PromisingIR Require Import Time.
-From PromisingIR Require Import View.
-From PromisingIR Require Import BoolMap.
-From PromisingIR Require Import Promises.
-From PromisingIR Require Import Cell.
-From PromisingIR Require Import Memory.
-From PromisingIR Require Import TView.
-From PromisingIR Require Import Global.
-From PromisingIR Require Import Local.
-From PromisingIR Require Import Thread.
-From PromisingIR Require Import Configuration.
+From PromisingFlat Require Import Time.
+From PromisingFlat Require Import View.
+From PromisingFlat Require Import BoolMap.
+From PromisingFlat Require Import Promises.
+From PromisingFlat Require Import Cell.
+From PromisingFlat Require Import Memory.
+From PromisingFlat Require Import TView.
+From PromisingFlat Require Import Global.
+From PromisingFlat Require Import Local.
+From PromisingFlat Require Import Thread.
+From PromisingFlat Require Import Configuration.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.
@@ -56,7 +56,7 @@ Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
       (MEM_SOUND: forall ts msg_arm
                          (GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm),
         exists loc_ps from val_ps released na,
-          (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>) /\
+          (<<LOC: msg_arm.(Msg.loc) = loc_ps>>) /\
           (<<GET_PS: PSMemory.get loc_ps (ntt ts) mem_ps = Some (from, Message.message val_ps released na)>>) /\
           (<<VAL: PStoRMWThread.sim_val val_ps msg_arm.(Msg.val)>>) /\
           (<<TS: PSTime.lt from (ntt ts)>>))
@@ -66,7 +66,7 @@ Variant sim_memory_final (mem_ps: PSMemory.t) (mem_arm: Memory.t): Prop :=
         exists ts msg_arm,
           (<<TO: to = ntt ts>>) /\
           (<<GET_ARM: Memory.get_msg ts mem_arm = Some msg_arm>>) /\
-          (<<LOC: msg_arm.(Msg.loc) = Zpos loc_ps>>))
+          (<<LOC: msg_arm.(Msg.loc) = loc_ps>>))
 .
 
 Lemma ps_to_rmw_sim_sim_memory_final

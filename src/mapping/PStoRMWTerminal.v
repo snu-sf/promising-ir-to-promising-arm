@@ -9,23 +9,23 @@ Require Import Bool.
 From sflib Require Import sflib.
 From Paco Require Import paco.
 
-From PromisingLib Require Import Basic.
-From PromisingLib Require Import Axioms.
-From PromisingLib Require Import Language.
-From PromisingLib Require Import Event.
-From PromisingLib Require Import Loc.
+From PromisingFlat Require Import Basic.
+From PromisingFlat Require Import Axioms.
+From PromisingFlat Require Import Language.
+From PromisingFlat Require Import Event.
+From PromisingFlat Require Import Loc.
 
-From PromisingIR Require Import Time.
-From PromisingIR Require Import View.
-From PromisingIR Require Import BoolMap.
-From PromisingIR Require Import Promises.
-From PromisingIR Require Import Cell.
-From PromisingIR Require Import Memory.
-From PromisingIR Require Import TView.
-From PromisingIR Require Import Global.
-From PromisingIR Require Import Local.
-From PromisingIR Require Import Thread.
-From PromisingIR Require Import Configuration.
+From PromisingFlat Require Import Time.
+From PromisingFlat Require Import View.
+From PromisingFlat Require Import BoolMap.
+From PromisingFlat Require Import Promises.
+From PromisingFlat Require Import Cell.
+From PromisingFlat Require Import Memory.
+From PromisingFlat Require Import TView.
+From PromisingFlat Require Import Global.
+From PromisingFlat Require Import Local.
+From PromisingFlat Require Import Thread.
+From PromisingFlat Require Import Configuration.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.

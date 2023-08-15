@@ -8,23 +8,23 @@ Require Import RelationClasses.
 From sflib Require Import sflib.
 From Paco Require Import paco.
 
-From PromisingLib Require Import Basic.
-From PromisingLib Require Import Axioms.
-From PromisingLib Require Import Language.
-From PromisingLib Require Import Event.
-From PromisingLib Require Import Loc.
+From PromisingFlat Require Import Basic.
+From PromisingFlat Require Import Axioms.
+From PromisingFlat Require Import Language.
+From PromisingFlat Require Import Event.
+From PromisingFlat Require Import Loc.
 
-From PromisingIR Require Import Time.
-From PromisingIR Require Import View.
-From PromisingIR Require Import BoolMap.
-From PromisingIR Require Import Promises.
-From PromisingIR Require Import Cell.
-From PromisingIR Require Import Memory.
-From PromisingIR Require Import TView.
-From PromisingIR Require Import Global.
-From PromisingIR Require Import Local.
-From PromisingIR Require Import Thread.
-From PromisingIR Require Import Configuration.
+From PromisingFlat Require Import Time.
+From PromisingFlat Require Import View.
+From PromisingFlat Require Import BoolMap.
+From PromisingFlat Require Import Promises.
+From PromisingFlat Require Import Cell.
+From PromisingFlat Require Import Memory.
+From PromisingFlat Require Import TView.
+From PromisingFlat Require Import Global.
+From PromisingFlat Require Import Local.
+From PromisingFlat Require Import Thread.
+From PromisingFlat Require Import Configuration.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.
@@ -38,18 +38,18 @@ Require Import PromisingArch.mapping.PSLang.
 
 Set Implicit Arguments.
 
-Module PSLoc := PromisingLib.Loc.Loc.
-Module PSTime := PromisingIR.Time.Time.
-Module PSView := PromisingIR.View.View.
-Module PSPromises := PromisingIR.Promises.Promises.
-Module PSTView := PromisingIR.TView.TView.
-Module PSLocal := PromisingIR.Local.Local.
-Module PSCell := PromisingIR.Cell.Cell.
-Module PSMemory := PromisingIR.Memory.Memory.
-Module PSGlobal := PromisingIR.Global.Global.
-Module PSThread := PromisingIR.Thread.Thread.
-Module PSThreads := PromisingIR.Configuration.Threads.
-Module PSConfiguration := PromisingIR.Configuration.Configuration.
+Module PSLoc := PromisingFlat.Loc.Loc.
+Module PSTime := PromisingFlat.Time.Time.
+Module PSView := PromisingFlat.View.View.
+Module PSPromises := PromisingFlat.Promises.Promises.
+Module PSTView := PromisingFlat.TView.TView.
+Module PSLocal := PromisingFlat.Local.Local.
+Module PSCell := PromisingFlat.Cell.Cell.
+Module PSMemory := PromisingFlat.Memory.Memory.
+Module PSGlobal := PromisingFlat.Global.Global.
+Module PSThread := PromisingFlat.Thread.Thread.
+Module PSThreads := PromisingFlat.Configuration.Threads.
+Module PSConfiguration := PromisingFlat.Configuration.Configuration.
 
 
 Variant opt_rel3 A B C (rel: A -> B -> C -> Prop):

@@ -9,23 +9,23 @@ Require Import Bool.
 From sflib Require Import sflib.
 From Paco Require Import paco.
 
-From PromisingLib Require Import Basic.
-From PromisingLib Require Import Axioms.
-From PromisingLib Require Import Language.
-From PromisingLib Require Import Event.
-From PromisingLib Require Import Loc.
+From PromisingFlat Require Import Basic.
+From PromisingFlat Require Import Axioms.
+From PromisingFlat Require Import Language.
+From PromisingFlat Require Import Event.
+From PromisingFlat Require Import Loc.
 
-From PromisingIR Require Import Time.
-From PromisingIR Require Import View.
-From PromisingIR Require Import BoolMap.
-From PromisingIR Require Import Promises.
-From PromisingIR Require Import Cell.
-From PromisingIR Require Import Memory.
-From PromisingIR Require Import TView.
-From PromisingIR Require Import Global.
-From PromisingIR Require Import Local.
-From PromisingIR Require Import Thread.
-From PromisingIR Require Import Configuration.
+From PromisingFlat Require Import Time.
+From PromisingFlat Require Import View.
+From PromisingFlat Require Import BoolMap.
+From PromisingFlat Require Import Promises.
+From PromisingFlat Require Import Cell.
+From PromisingFlat Require Import Memory.
+From PromisingFlat Require Import TView.
+From PromisingFlat Require Import Global.
+From PromisingFlat Require Import Local.
+From PromisingFlat Require Import Thread.
+From PromisingFlat Require Import Configuration.
 
 Require Import PromisingArch.lib.Basic.
 Require Import PromisingArch.lib.Order.
@@ -150,7 +150,6 @@ Module PStoRMW.
           destruct (Promises.lookup ts (Local.promises lc_arm)) eqn:PRM; ss.
           exploit PRM_SOUND; eauto. i. des.
           rewrite GET_ARM0 in *. inv GET_ARM.
-          rewrite LOC in *. inv LOC0.
           inv WF'. exploit RESERVES; eauto. i. congr.
       - right.
         exploit PSMemory.future_get1; try apply FUTURE; eauto. i. des.
@@ -340,7 +339,6 @@ Module PStoRMW.
           destruct (Promises.lookup ts (Local.promises lc_arm)) eqn:PRM; ss.
           exploit PRM_SOUND; eauto. i. des.
           rewrite GET_ARM0 in *. inv GET_ARM.
-          rewrite LOC in *. inv LOC0.
           inv WF'. exploit RESERVES; eauto. i. congr.
       - right.
         exploit PSMemory.future_get1; try apply FUTURE; eauto. i. des.
@@ -411,8 +409,6 @@ Module PStoRMW.
       i. inv H; eauto.
       rewrite GET_ARM in *. inv GET_ARM0.
       exploit MEM_SOUND0; eauto. i. des. clear x1.
-      rewrite LOC in *. inv LOC0.
-      rewrite GET_PS in *. inv GET_PS0.
       unguardH x0. des; try congr.
       exploit PROMISED0; try refl. i. des.
       exploit PROMISED_PS0; try refl. i.
@@ -469,7 +465,7 @@ Module PStoRMW.
         (PRM_ARM: Promises.lookup (S n) lc_arm.(Local.promises) = true)
         (GET_ARM: Memory.get_msg (S n) mem_arm = Some msg_arm)
         (MSG_TID: msg_arm.(Msg.tid) = tid)
-        (LOC: msg_arm.(Msg.loc) = Zpos loc)
+        (LOC: msg_arm.(Msg.loc) = loc)
         (TVIEW: lc2_ps.(PSLocal.tview) = lc1_ps.(PSLocal.tview))
         (PRM: lc2_ps.(PSLocal.promises) =
               fun loc' => if PSLoc.eq_dec loc' loc then true
@@ -488,7 +484,6 @@ Module PStoRMW.
       - rewrite RSV. eassumption.
       - i. inv H.
         + rewrite GET_ARM0 in *. inv GET_ARM.
-          rewrite LOC0 in *. inv LOC.
           rewrite PRM. condtac; ss.
         + rewrite PRM. condtac; ss. auto.
     }
@@ -503,11 +498,11 @@ Module PStoRMW.
       unguardH x0. des; [|right; esplits; eauto].
       left. splits; ss. i. inv H.
       - rewrite GET_ARM0 in *. inv GET_ARM.
-        rewrite LOC0 in *. inv LOC.
         rewrite PRM. condtac; ss.
       - rewrite PRM. condtac; eauto.
         subst. repeat split; ss.
-        exploit PROMISED; ss. i. des. eauto.
+        exploit PROMISED; ss. i. des.
+        rewrite e in *. eauto.
     }
     { rewrite TVIEW. eauto. }
   Qed.
@@ -645,9 +640,9 @@ Module PStoRMW.
         destruct th2_ps as [st2_ps lc2_ps gl2_ps]. ss.
         inv SIM2. inv FULFILL.
         - exploit sim_state_cons_write; eauto. i. des.
-          replace loc_ps0 with loc_ps in *; cycle 1.
+          replace loc_ps with (Msg.loc msg_arm) in *; cycle 1.
           { destruct eu1''. ss.
-            exploit LOC0.
+            exploit LOC.
             { cut (vloc.(ValA.annot).(View.ts) <= View.ts (Local.vcap local)).
               { i. etrans; [exact H0|]. nia. }
               inv FULFILL0. ss. ets.
@@ -656,18 +651,17 @@ Module PStoRMW.
             exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
               try eapply rtc_mon; try exact FULFILL_STEPS;
               try apply RMWExecUnit.dmbsy_exact_state_step. i.
-            rewrite x3 in MSG. rewrite MSG in *.
+            rewrite x2 in MSG. rewrite MSG in *.
             destruct msg_arm. ss. clarify.
-            rewrite H2 in *. inv x2. ss.
           }
           esplits.
           + econs 2; [|econs 9]; eauto.
           + ss.
         - exploit sim_state_cons_fadd_weak; eauto. i. des.
           specialize (x3 vold.(ValA.val)). des. ss.
-          replace loc_ps0 with loc_ps in *; cycle 1.
+          replace loc_ps with (Msg.loc msg_arm) in *; cycle 1.
           { destruct eu1''. ss.
-            exploit LOC0.
+            exploit LOC.
             { cut (vloc.(ValA.annot).(View.ts) <= View.ts (Local.vcap local)).
               { i. etrans; [exact H0|]. nia. }
               inv STEP_CONTROL. ss.
@@ -678,9 +672,8 @@ Module PStoRMW.
             exploit (RMWExecUnit.rtc_state_step_memory (A:=unit));
               try eapply rtc_mon; try exact FULFILL_STEPS;
               try apply RMWExecUnit.dmbsy_exact_state_step. i.
-            rewrite x3 in MSG. rewrite MSG in *.
+            rewrite x2 in MSG. rewrite MSG in *.
             destruct msg_arm. ss. clarify.
-            rewrite H2 in *. inv x2. ss.
           }
           esplits.
           + econs 2; [|econs 10]; eauto.
