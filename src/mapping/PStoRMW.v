@@ -640,6 +640,10 @@ Module PStoRMW.
         destruct th2_ps as [st2_ps lc2_ps gl2_ps]. ss.
         inv SIM2. inv FULFILL.
         - exploit sim_state_cons_write; eauto. i. des.
+          { esplits.
+            - econs 2; [|econs 7]; eauto.
+            - ss.
+          }
           replace loc_ps with (Msg.loc msg_arm) in *; cycle 1.
           { destruct eu1''. ss.
             exploit LOC.
@@ -658,6 +662,10 @@ Module PStoRMW.
           + econs 2; [|econs 9]; eauto.
           + ss.
         - exploit sim_state_cons_fadd_weak; eauto. i. des.
+          { esplits.
+            - econs 2; [|econs 7]; eauto.
+            - ss.
+          }
           specialize (x3 vold.(ValA.val)). des. ss.
           replace loc_ps with (Msg.loc msg_arm) in *; cycle 1.
           { destruct eu1''. ss.

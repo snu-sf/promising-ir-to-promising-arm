@@ -1402,32 +1402,14 @@ Module PStoRMWConsistent.
       + econs; ss. rewrite <- List.map_app. ss.
   Qed.
 
-  Lemma sim_state_cons_read_aux
-        n st1_ps st1_arm e_arm st2_arm
-        loc_arm val_arm ord_arm
-        (SIM1: sim_state_cons n st1_ps st1_arm)
-        (STEP: RMWState.step e_arm st1_arm st2_arm)
-        (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm):
-    exists loc_ps ord_ps,
-      (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = loc_ps>>) /\
-      (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>).
-  Proof.
-    destruct st1_ps as [regs1_ps stmts1_ps].
-    destruct st1_arm as [stmts1_arm regs1_arm].
-    destruct st2_arm as [stmts2_arm regs2_arm].
-    inv SIM1. ss.
-    destruct stmts1_ps; ss; subst; [inv STEP|].
-    destruct t; ss; try by inv STEP.
-    destruct i; inv STEP.
-    esplits; eauto.
-  Qed.
-
   Lemma sim_state_cons_read
         n st1_ps st1_arm e_arm st2_arm
         loc_arm val_arm ord_arm
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
         (EVENT: e_arm = RMWEvent.read ord_arm loc_arm val_arm):
+    (exists st2_ps,
+        (<<STEP_PS: State.step ProgramEvent.failure st1_ps st2_ps>>)) \/
     exists loc_ps ord_ps,
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = loc_ps>>) /\
       (<<ORD: ord_arm = ps_to_rmw_ordr ord_ps>>) /\
@@ -1443,10 +1425,14 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
-    esplits; ss. i.
-    esplits; [econs 1; econs 3|..]; eauto.
-    econs; ss.
-    apply sim_regs_cons_add; ss.
+    destruct (RegFile.eval_expr regs1_ps eloc) as [loc|] eqn:LOC.
+    { right. exists loc. esplits; ss; i.
+      - exploit sim_regs_cons_eval_expr; eauto. i. inv x0.
+        rewrite LOC in *. inv H1. ss.
+      - esplits; [econs 1; econs 4|..]; eauto.
+        econs; ss. apply sim_regs_cons_add; ss.
+    }
+    { left. esplits. econs 1. econs 3. ss. }
   Qed.
 
   Lemma sim_state_cons_write
@@ -1455,6 +1441,8 @@ Module PStoRMWConsistent.
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
         (EVENT: e_arm = RMWEvent.write ord_arm loc_arm val_arm):
+    (exists st2_ps,
+        (<<STEP_PS: State.step ProgramEvent.failure st1_ps st2_ps>>)) \/
     exists loc_ps val_ps ord_ps st2_ps,
       (<<STEP_PS: State.step (ProgramEvent.write loc_ps val_ps ord_ps) st1_ps st2_ps>>) /\
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = loc_ps>>) /\
@@ -1469,9 +1457,14 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
-    esplits; [econs 1; econs 4|..]; eauto.
-    - apply sim_regs_cons_eval_expr; ss.
-    - econs; ss.
+    destruct (RegFile.eval_expr regs1_ps eloc) as [loc|] eqn:LOC.
+    { right. exists loc.
+      esplits; [econs 1; econs 6|..]; ss; i.
+      - exploit sim_regs_cons_eval_expr; eauto. i. inv x0.
+        rewrite LOC in *. inv H1. ss.
+      - ii. exploit sim_regs_cons_eval_expr; eauto.
+    }
+    { left. esplits. econs 1. econs 5. ss. }
   Qed.
 
   Lemma sim_state_cons_fadd
@@ -1480,6 +1473,8 @@ Module PStoRMWConsistent.
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
         (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm):
+    (exists st2_ps,
+        (<<STEP_PS: State.step ProgramEvent.failure st1_ps st2_ps>>)) \/
     exists loc_ps ordr_ps ordw_ps,
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = loc_ps>>) /\
       (<<ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps>>) /\
@@ -1497,17 +1492,21 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
-    esplits; ss. i.
-    esplits; [econs 1; econs 5|..]; eauto.
-    - ii. ss.
-      exploit VOLD.
-      { etrans; eauto. apply join_l. }
-      i. inv x0.
-      exploit sim_regs_cons_eval_expr; try exact REGS.
-      { etrans; [|exact H]. apply join_r. }
-      i. inv x0. ss.
-    - econs; ss.
-      apply sim_regs_cons_add; ss.
+    destruct (RegFile.eval_expr regs1_ps eloc) as [loc|] eqn:LOC.
+    { right. exists loc.
+      esplits; ss; i.
+      - exploit sim_regs_cons_eval_expr; eauto. i. inv x0. congr.
+      - esplits; [econs 1; econs 8|..]; ss; i.
+        + ii. ss.
+          exploit VOLD.
+          { etrans; eauto. apply join_l. }
+          i. inv x0.
+          exploit sim_regs_cons_eval_expr; try exact REGS.
+          { etrans; [|exact H]. apply join_r. }
+          i. inv x0. ss.
+        + econs; ss. apply sim_regs_cons_add; ss.
+    }
+    { left. esplits. econs 1. econs 7. ss. }
   Qed.
 
   Lemma sim_state_cons_fadd_weak
@@ -1516,6 +1515,8 @@ Module PStoRMWConsistent.
         (SIM1: sim_state_cons n st1_ps st1_arm)
         (STEP: RMWState.step e_arm st1_arm st2_arm)
         (EVENT: e_arm = RMWEvent.fadd ordr_arm ordw_arm loc_arm vold_arm vnew_arm):
+    (exists st2_ps,
+        (<<STEP_PS: State.step ProgramEvent.failure st1_ps st2_ps>>)) \/
     exists loc_ps ordr_ps ordw_ps,
       (<<LOC: loc_arm.(ValA.annot).(View.ts) <= n -> loc_arm.(ValA.val) = loc_ps>>) /\
       (<<ORDR: ordr_arm = ps_to_rmw_ordr ordr_ps>>) /\
@@ -1531,8 +1532,13 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
-    esplits; ss. i.
-    esplits; [econs 1; econs 5|..]; eauto.
+    destruct (RegFile.eval_expr regs1_ps eloc) as [loc|] eqn:LOC.
+    { right. exists loc.
+      esplits; ss; i.
+      - exploit sim_regs_cons_eval_expr; eauto. i. inv x0. congr.
+      - esplits; [econs 1; econs 8|..]; ss; i.
+    }
+    { left. esplits. econs 1. econs 7. ss. }
   Qed.
 
   Lemma sim_state_cons_dmb
@@ -1556,7 +1562,7 @@ Module PStoRMWConsistent.
     destruct stmts1_ps; ss; subst; [inv STEP|].
     destruct t; ss; try by inv STEP.
     destruct i; inv STEP.
-    esplits; [econs 1; econs 6|..]; eauto.
+    esplits; [econs 1; econs 9|..]; eauto.
     econs; ss.
   Qed.
 
@@ -1592,7 +1598,12 @@ Module PStoRMWConsistent.
     }
 
     { (* read *)
-      exploit sim_state_cons_read; eauto. i. des. subst.
+      exploit sim_state_cons_read; eauto. i. des; subst.
+      { esplits; [refl|]. right.
+        esplits.
+        - econs 2; [|econs 7]; eauto.
+        - ss.
+      }
       exploit LOC.
       { etrans; [|exact VCAP]. inv STEP. ss. ets. }
       clear LOC. intro LOC.
@@ -1648,6 +1659,11 @@ Module PStoRMWConsistent.
 
     { (* fulfill *)
       exploit sim_state_cons_write; eauto. i. des.
+      { esplits; [refl|]. right.
+        esplits.
+        - econs 2; [|econs 7]; eauto.
+        - ss.
+      }
       exploit LOC.
       { etrans; [|exact VCAP]. inv STEP. ss. ets. }
       clear LOC. intro LOC.
@@ -1667,7 +1683,12 @@ Module PStoRMWConsistent.
     }
 
     { (* fadd *)
-      exploit sim_state_cons_fadd; eauto. i. des. subst.
+      exploit sim_state_cons_fadd; eauto. i. des; subst.
+      { esplits; [refl|]. right.
+        esplits.
+        - econs 2; [|econs 7]; eauto.
+        - ss.
+      }
       exploit LOC.
       { etrans; [|exact VCAP].
         clear - STEP_FULFILL STEP_CONTROL.

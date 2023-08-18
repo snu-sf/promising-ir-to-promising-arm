@@ -282,25 +282,25 @@ Module PStoRMWThread.
       apply sim_regs_eval_expr; ss.
     }
     { (* load *)
-      esplits; [econs 1; econs 3|..]; eauto.
-      econs; ss.
-      apply sim_regs_add; ss.
+      exploit sim_regs_eval_expr; eauto. i. inv x0.
+      esplits; [econs 1; econs 4|..]; eauto.
+      econs; ss. apply sim_regs_add; ss.
     }
     { (* store *)
-      esplits; [econs 1; econs 4|..]; eauto.
-      econs; ss.
-      apply sim_regs_eval_expr; ss.
+      exploit sim_regs_eval_expr; eauto. i. inv x0.
+      esplits; [econs 1; econs 6|..]; eauto.
+      econs; ss. apply sim_regs_eval_expr; ss.
     }
     { (* fadd *)
-      esplits; [econs 1; econs 5|..]; eauto.
+      exploit sim_regs_eval_expr; eauto. i. inv x0.
+      esplits; [econs 1; econs 8|..]; eauto.
       - econs; ss. s.
         exploit sim_regs_eval_expr; eauto. i.
-        inv x0. rewrite <- H0. ss.
-      - econs; ss.
-        apply sim_regs_add; ss.
+        inv x0. rewrite <- H1. ss.
+      - econs; ss. apply sim_regs_add; ss.
     }
     { (* dmb *)
-      esplits; [econs 1; econs 6|..]; eauto.
+      esplits; [econs 1; econs 9|..]; eauto.
     }
   Qed.
 

@@ -71,14 +71,14 @@ Definition ps_to_rmw_instr (i: Instr.t): rmw_instrT :=
       rmw_instr_skip
   | Instr.assign reg e =>
       rmw_instr_assign reg (ps_to_rmw_expr e)
-  | Instr.load reg loc ord =>
-      rmw_instr_load (ps_to_rmw_ordr ord) reg (expr_const loc)
-  | Instr.store loc e ord =>
-      rmw_instr_store (ps_to_rmw_ordw ord) (expr_const loc) (ps_to_rmw_expr e)
-  | Instr.fadd reg loc e ordr ordw =>
+  | Instr.load reg eloc ord =>
+      rmw_instr_load (ps_to_rmw_ordr ord) reg (ps_to_rmw_expr eloc)
+  | Instr.store eloc e ord =>
+      rmw_instr_store (ps_to_rmw_ordw ord) (ps_to_rmw_expr eloc) (ps_to_rmw_expr e)
+  | Instr.fadd reg eloc e ordr ordw =>
       rmw_instr_fadd
         (ps_to_rmw_ordr ordr) (ps_to_rmw_ordw ordw)
-        reg (expr_const loc) (ps_to_rmw_expr e)
+        reg (ps_to_rmw_expr eloc) (ps_to_rmw_expr e)
   | Instr.fence ordr ordw =>
       rmw_instr_dmb
         (Ordering.le Ordering.acqrel ordr || Ordering.le Ordering.seqcst ordw)
